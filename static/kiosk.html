@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="/static/common.css">
+  <title>PUB Jukebox</title>
+</head>
+<body>
+<div class="wrap">
+  <h1>PUB Jukebox</h1>
+  <input id="q" placeholder="YouTube URL nebo video ID" style="width:70%">
+  <input id="title" placeholder="Název (nepovinné)" style="width:70%; margin-top:10px">
+  <button onclick="add()">Přidat do fronty</button>
+  <h2>Styl</h2>
+  <div class="grid">
+    <button class="genre">CZ/SK HITY</button>
+    <button class="genre">CZ/SK OLDIE</button>
+    <button class="genre">ROCK</button>
+    <button class="genre">POP</button>
+    <button class="genre">PARTY & DANCE</button>
+    <button class="genre">CZ/SK HIP-HOP</button>
+    <button class="genre">KARAOKE</button>
+  </div>
+  <h2>Fronta</h2>
+  <div id="queue"></div>
+</div>
+<script>
+function vid(v){try{let u=new URL(v);return u.searchParams.get('v')||u.pathname.split('/').pop()}catch(e){return v}}
+async function add(){let video_id=vid(q.value.trim());let t=title.value.trim()||video_id;if(!video_id)return;await fetch('/api/queue',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({video_id, title:t})});q.value='';title.value='';load()}
+async function load(){let a=await (await fetch('/api/queue')).json();queue.innerHTML=a.map(s=>`<div class="card row"><div><b>${s.title}</b><div class="small">${s.status}</div></div><span class="badge">▶ ${s.votes}</span></div>`).join('')}
+setInterval(load,1500);load();
+</script>
+</body>
+</html>

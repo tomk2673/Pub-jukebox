@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="/static/common.css">
+  <title>Admin</title>
+</head>
+<body>
+<div class="wrap">
+  <h1>Admin</h1>
+  <input id="pin" type="password" placeholder="PIN"><button onclick="next()">Další</button>
+  <div id="queue"></div>
+</div>
+<script>
+const h=()=>({ 'x-admin-pin':pin.value });
+async function next(){await fetch('/api/next',{method:'POST',headers:h()});load()}
+async function act(id, a){await fetch('/api/queue/'+id+'/'+a,{method:'POST',headers:h()});load()}
+async function del(id){await fetch('/api/queue/'+id,{method:'DELETE',headers:h()});load()}
+async function load(){let a=await (await fetch('/api/queue')).json();queue.innerHTML=a.map(s=>`<div class="card"><b>${s.title}</b><div>${s.priority} • ${s.votes} hlasů</div><button onclick="act('${s.id}','play')">Hrát</button> <button onclick="act('${s.id}','priority')">Priorita</button> <button onclick="del('${s.id}')">Smazat</button></div>`).join('')}
+setInterval(load,1500);load();
+</script>
+</body>
+</html>

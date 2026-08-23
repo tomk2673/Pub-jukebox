@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="/static/common.css">
+  <title>Fronta</title>
+</head>
+<body>
+<div class="wrap">
+  <h1>Co hraje právě?</h1>
+  <p>Zde může host vidět aktuální frontu a hlasovat.</p>
+  <div id="queue"></div>
+</div>
+<script>
+async function vote(id){await fetch('/api/queue/'+id+'/vote',{method:'POST'});load()}
+async function load(){let a=await (await fetch('/api/queue')).json();queue.innerHTML=a.map(s=>`<div class="card"><b>${s.title}</b><div class="small">${s.status}</div><button onclick="vote('${s.id}')">▲</button></div>`).join('')}
+setInterval(load,1500);load();
+</script>
+</body>
+</html>
