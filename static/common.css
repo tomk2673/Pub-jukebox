@@ -18,7 +18,13 @@
 
 * { box-sizing: border-box; }
 
-html { min-height: 100%; background: var(--bg); }
+html {
+  width: 100%;
+  min-height: 100%;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+  background: var(--bg);
+}
 
 body {
   min-height: 100vh;
@@ -29,6 +35,38 @@ body {
     radial-gradient(circle at 95% 15%, rgba(97, 231, 220, 0.10), transparent 30rem),
     var(--bg);
 }
+
+/* Hostovská obrazovka se na telefonu chová jako aplikace, ne jako široká webová stránka. */
+body.guest-app {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+  touch-action: pan-y pinch-zoom;
+}
+
+@supports (overflow: clip) {
+  html, body.guest-app { overflow-x: clip; }
+}
+
+body.guest-app .shell,
+body.guest-app .topbar,
+body.guest-app .hero,
+body.guest-app .panel,
+body.guest-app .search-row,
+body.guest-app .results,
+body.guest-app .section-head,
+body.guest-app #queue {
+  min-width: 0;
+  max-width: 100%;
+}
+
+body.guest-app .brand,
+body.guest-app .brand > div:last-child { min-width: 0; }
+body.guest-app .brand-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.guest-app .song-card { max-width: 100%; overflow: hidden; }
+body.guest-app input,
+body.guest-app button { max-width: 100%; }
 
 button, input, textarea { font: inherit; }
 
@@ -295,6 +333,7 @@ input[type="range"] { min-height: 28px; padding: 0; accent-color: var(--amber); 
   .thumb { width: 62px; }
   .song-actions { grid-column: 1 / -1; justify-content: stretch; }
   .song-actions .btn { flex: 1; }
+  .guest-app .results .song-card > .btn { grid-column: 1 / -1; width: 100%; }
   .mode-picker { grid-template-columns: 1fr; }
   .mode-option span { min-height: 68px; }
   .audio-controls { grid-template-columns: 1fr; }

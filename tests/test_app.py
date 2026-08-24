@@ -108,6 +108,19 @@ def test_tv_player_blocks_customer_youtube_controls(tmp_path, monkeypatch):
         assert "pointer-events: none" in style.text
 
 
+def test_guest_mobile_layout_blocks_horizontal_overscroll(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        join(client)
+        guest = client.get("/guest")
+        style = client.get("/static/common.css")
+        worker = client.get("/static/sw.js")
+        assert 'class="guest-app"' in guest.text
+        assert "overscroll-behavior-x: none" in style.text
+        assert "touch-action: pan-y pinch-zoom" in style.text
+        assert ".guest-app .results .song-card > .btn" in style.text
+        assert 'pub-jukebox-v5' in worker.text
+
+
 def test_invalid_pin_and_video_are_rejected(tmp_path, monkeypatch):
     with make_client(tmp_path, monkeypatch) as client:
         assert client.post("/api/admin/login", json={"pin": "wrong"}).status_code == 401
