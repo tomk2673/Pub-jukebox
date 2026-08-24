@@ -104,6 +104,7 @@ def test_tv_player_blocks_customer_youtube_controls(tmp_path, monkeypatch):
         assert "VYBER DALŠÍ SKLADBU" in tv.text
         assert "disablekb: 1" in script.text
         assert "fs: 0" in script.text
+        assert "iframe#player" in style.text
         assert "pointer-events: none" in style.text
 
 
