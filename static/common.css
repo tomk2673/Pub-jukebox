@@ -258,6 +258,8 @@ input[type="range"] { min-height: 28px; padding: 0; accent-color: var(--amber); 
 .audio-controls.disabled-controls { opacity: .42; }
 
 .join-code { text-transform: none; letter-spacing: 0.04em; text-align: center; }
+.staff-link { display: inline-block; margin-top: 10px; color: var(--muted); font-size: 12px; text-decoration: none; }
+.staff-link:hover { color: var(--text); }
 .footer-note { margin-top: 30px; color: var(--muted); font-size: 12px; text-align: center; }
 
 @media (max-width: 780px) {
