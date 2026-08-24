@@ -1,8 +1,8 @@
-# PUB Jukebox 1.0
+# PUB Jukebox 1.1
 
 Webový jukebox pro bar. Host načte QR kód, vyhledá skladbu podle názvu na YouTube, přidá ji do společné fronty a může jednou hlasovat. Obsluha řídí pořadí a TV přehrává frontu automaticky.
 
-## Co verze 1.0 umí
+## Co verze 1.1 umí
 
 - hledání skladeb podle názvu a interpreta
 - záložní YouTube vyhledávání i bez API klíče
@@ -13,10 +13,13 @@ Webový jukebox pro bar. Host načte QR kód, vyhledá skladbu podle názvu na Y
 - ochrana proti duplicitám, přeplnění fronty a zahlcení jedním hostem
 - admin rozhraní chráněné PINem
 - QR odkaz pro hosty
-- TV režim s automatickým pokračováním
+- vlastní název provozovny uložený v cloudu
+- tři živě přepínatelné TV režimy: videoklip, virtuální DJ a nápojová nabídka
+- TV přehrávač s automatickým pokračováním
 - pauza, pokračování, přeskočení a vzdálená hlasitost
 - ruční potvrzení přednosti za 5 Kč
 - noční limit celkové hlasitosti
+- konfigurační profil Night Bass Guard PRO: cílová hlasitost v LUFS, limiter a síla dynamické ochrany basů
 - instalace na plochu iPhonu jako webová aplikace
 - trvalá sdílená databáze Supabase (na Vercelu), lokálně SQLite
 
@@ -68,6 +71,8 @@ Viz `.env.example`. Nejdůležitější proměnné:
 | `SUPABASE_URL` | URL produkčního Supabase projektu |
 | `SUPABASE_PUBLISHABLE_KEY` | veřejný klíč pro backendové RPC |
 | `JUKEBOX_DB_SECRET` | tajný klíč mezi aplikací a databázovým RPC |
+| `VENUE_KEY` | trvalý identifikátor provozovny, např. `ztraceny-bar` |
+| `DEFAULT_MENU_TEXT` | výchozí nápojová nabídka pro novou provozovnu |
 | `PRIORITY_PRICE_CZK` | cena ručně potvrzené přednosti |
 | `NIGHT_VOLUME` | limit hlasitosti v nočním režimu |
 
@@ -78,8 +83,12 @@ python -m pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
+## Základ pro prodej dalším provozovnám
+
+Profil provozovny je oddělený od zdrojového kódu pomocí `VENUE_KEY`. V databázi drží obchodní název, TV režim, nápojové menu, tarif, povolené funkce a zvukový profil. Stejnou aplikaci tak lze nasadit a označit pro další podnik bez vytváření nové větve kódu. Pole `plan`, `features` a `is_active` jsou připravená pro pozdější předplatné, centrální správu licencí a vypínání placených modulů.
+
 ## Důležité provozní omezení
 
-Webový YouTube přehrávač neumí kvůli oddělení zvuku z cizí domény aplikovat skutečný high-pass filtr jen na basy. Noční režim proto v této verzi omezuje celkovou hlasitost. Skutečný **Night Bass Guard** vyžaduje vlastní/licencované audio soubory nebo externí DSP/EQ mezi TV a zesilovačem.
+Webový YouTube přehrávač neumí kvůli oddělení zvuku z cizí domény měřit ani filtrovat audio signál. Noční limit proto pouze omezuje celkovou hlasitost. Administrace už ukládá profil **Night Bass Guard PRO**, ale skutečné vyrovnání hlasitosti, limiter a dynamická komprese pásma 20–120 Hz vyžadují místní audio procesor/DSP v cestě mezi počítačem a aparaturou. Dokud není procesor připojený, rozhraní ho pravdivě zobrazuje jako nepřipojený.
 
 Veřejné přehrávání hudby a komerční použití musí provozovatel řešit v souladu s podmínkami YouTube a příslušnými hudebními licencemi. Automatická online platba za přednost není ve V1 zapojená; přednost potvrzuje obsluha po platbě u baru.

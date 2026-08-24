@@ -21,6 +21,11 @@ function status(text = "", type = "") {
   $("adminStatus").className = `status ${type}`.trim();
 }
 
+function displayStatus(text = "", type = "") {
+  $("displayStatus").textContent = text;
+  $("displayStatus").className = `status ${type}`.trim();
+}
+
 function showAdmin() {
   $("loginView").classList.add("hidden");
   $("adminView").classList.remove("hidden");
@@ -112,6 +117,60 @@ function renderPlayer() {
   }
 }
 
+function renderVenueSettings() {
+  if (!state.config) return;
+  $("businessName").value = state.config.business_name || state.config.bar_name || "";
+  $("menuText").value = state.config.menu_text || "";
+  $("venuePlan").textContent = String(state.config.plan || "pilot").toUpperCase();
+  const mode = document.querySelector(`input[name="tvMode"][value="${state.config.tv_mode || "clip"}"]`);
+  if (mode) mode.checked = true;
+  const audioMode = document.querySelector(`input[name="audioMode"][value="${state.config.audio_mode || "standard"}"]`);
+  if (audioMode) audioMode.checked = true;
+  $("targetLufs").value = state.config.target_lufs ?? -16;
+  $("bassStrength").value = state.config.bass_guard_strength ?? 65;
+  $("limiterCeiling").value = state.config.limiter_ceiling_db ?? -1;
+  renderAudioValues();
+  const processor = state.config.audio_processor || {};
+  $("processorState").textContent = processor.connected ? "PŘIPOJEN" : "NEPŘIPOJEN";
+  $("processorState").classList.toggle("connected", Boolean(processor.connected));
+}
+
+function renderAudioValues() {
+  $("targetLufsValue").textContent = `${String($("targetLufs").value).replace("-", "−")} LUFS`;
+  $("bassStrengthValue").textContent = `${$("bassStrength").value} %`;
+  $("limiterValue").textContent = `${Number($("limiterCeiling").value).toFixed(1).replace("-", "−")} dB`;
+  const enabled = document.querySelector('input[name="audioMode"]:checked')?.value === "bass_guard";
+  $("audioControls").classList.toggle("disabled-controls", !enabled);
+  for (const input of $("audioControls").querySelectorAll("input")) input.disabled = !enabled;
+}
+
+async function saveVenueSettings(event) {
+  event.preventDefault();
+  const selectedMode = document.querySelector('input[name="tvMode"]:checked');
+  const selectedAudioMode = document.querySelector('input[name="audioMode"]:checked');
+  displayStatus("Ukládám a přepínám TV…");
+  try {
+    const saved = await api("/api/admin/display", {
+      method: "PUT",
+      body: JSON.stringify({
+        business_name: $("businessName").value,
+        tv_mode: selectedMode?.value || "clip",
+        menu_text: $("menuText").value,
+        audio_mode: selectedAudioMode?.value || "standard",
+        target_lufs: Number($("targetLufs").value),
+        limiter_ceiling_db: Number($("limiterCeiling").value),
+        bass_guard_strength: Number($("bassStrength").value),
+      }),
+    });
+    state.config = { ...state.config, ...saved, bar_name: saved.business_name };
+    $("brandName").textContent = saved.business_name;
+    renderVenueSettings();
+    displayStatus("Uloženo. TV se právě přepíná.", "success");
+  } catch (error) {
+    displayStatus(error.message, "error");
+  }
+}
+
 async function loadAll(silent = false) {
   try {
     const [config, queue, player] = await Promise.all([
@@ -123,6 +182,7 @@ async function loadAll(silent = false) {
     state.queue = queue;
     state.player = player;
     $("brandName").textContent = config.bar_name;
+    renderVenueSettings();
     $("joinUrl").textContent = config.join_url;
     if (!state.configLoaded) {
       $("qr").src = `/api/admin/qr.svg?t=${Date.now()}`;
@@ -170,6 +230,9 @@ async function control(action, value = null) {
 
 function wireEvents() {
   $("loginForm").addEventListener("submit", login);
+  $("displayForm").addEventListener("submit", saveVenueSettings);
+  for (const input of document.querySelectorAll('input[name="audioMode"]')) input.addEventListener("change", renderAudioValues);
+  for (const id of ["targetLufs", "bassStrength", "limiterCeiling"]) $(id).addEventListener("input", renderAudioValues);
   $("startButton").addEventListener("click", () => playerAction("/api/player/start", "Přehrávač spuštěn."));
   $("nextButton").addEventListener("click", () => playerAction("/api/player/next", "Přeskakuji na další skladbu."));
   $("pauseButton").addEventListener("click", () => control("pause"));

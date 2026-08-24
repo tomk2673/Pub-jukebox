@@ -8,7 +8,7 @@
   <title>TV · PUB Jukebox</title>
 </head>
 <body>
-  <div id="player"></div>
+  <div class="player-shell" id="playerShell"><div id="player"></div></div>
   <section class="tv-login" id="loginView">
     <form class="tv-login-card" id="loginForm">
       <div class="tv-logo">▶</div>
@@ -24,13 +24,55 @@
     <h1>Vyber skladbu</h1>
     <p>Naskenuj QR kód a přidej hudbu do fronty.</p>
   </section>
+
+  <section class="display-scene dj-view hidden" id="djView">
+    <header class="scene-head">
+      <div><span>VIRTUAL DJ · LIVE</span><h1 id="djBrand">PUB JUKEBOX</h1></div>
+      <div class="live-pill"><i></i> ON AIR</div>
+    </header>
+    <div class="laser laser-one"></div><div class="laser laser-two"></div>
+    <div class="dj-stage" aria-hidden="true">
+      <div class="equalizer" id="equalizer">
+        <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+      </div>
+      <svg class="dj-avatar" viewBox="0 0 640 460" role="img" aria-label="Animovaný virtuální DJ">
+        <defs>
+          <linearGradient id="hood" x1="0" x2="1"><stop stop-color="#151927"/><stop offset="1" stop-color="#31384c"/></linearGradient>
+          <radialGradient id="face"><stop stop-color="#ffba3a" stop-opacity=".5"/><stop offset="1" stop-color="#090b0f"/></radialGradient>
+          <linearGradient id="desk" x1="0" x2="1"><stop stop-color="#61e7dc"/><stop offset=".5" stop-color="#ffba3a"/><stop offset="1" stop-color="#ff4d9d"/></linearGradient>
+        </defs>
+        <ellipse cx="320" cy="425" rx="280" ry="22" fill="#000" opacity=".55"/>
+        <path d="M180 350c16-105 55-165 140-165s124 60 140 165" fill="url(#hood)" stroke="#61e7dc" stroke-opacity=".35" stroke-width="5"/>
+        <circle cx="320" cy="155" r="82" fill="url(#face)" stroke="#ffba3a" stroke-width="5"/>
+        <path d="M235 156c0-61 35-103 85-103s85 42 85 103" fill="none" stroke="#ff4d9d" stroke-width="18" stroke-linecap="round"/>
+        <rect x="224" y="137" width="30" height="66" rx="15" fill="#ff4d9d"/><rect x="386" y="137" width="30" height="66" rx="15" fill="#ff4d9d"/>
+        <path d="M278 162h84" stroke="#61e7dc" stroke-width="8" stroke-linecap="round"/>
+        <path d="M220 298l-72 74M420 298l72 74" stroke="#d7dcea" stroke-width="18" stroke-linecap="round"/>
+        <rect x="92" y="350" width="456" height="82" rx="21" fill="#10131b" stroke="url(#desk)" stroke-width="5"/>
+        <g class="deck deck-left"><circle cx="205" cy="391" r="31" fill="#050609" stroke="#61e7dc" stroke-width="5"/><circle cx="205" cy="391" r="8" fill="#61e7dc"/></g>
+        <g class="deck deck-right"><circle cx="435" cy="391" r="31" fill="#050609" stroke="#ff4d9d" stroke-width="5"/><circle cx="435" cy="391" r="8" fill="#ff4d9d"/></g>
+        <g fill="#ffba3a"><rect x="285" y="366" width="12" height="39" rx="6"/><rect x="314" y="376" width="12" height="29" rx="6"/><rect x="343" y="357" width="12" height="48" rx="6"/></g>
+      </svg>
+    </div>
+    <div class="scene-track"><span>PRÁVĚ MIXUJE</span><strong id="djTrack">ČEKÁM NA PRVNÍ TRACK</strong></div>
+  </section>
+
+  <section class="display-scene menu-view hidden" id="menuView">
+    <header class="scene-head menu-head">
+      <div><span>NÁPOJOVÁ NABÍDKA</span><h1 id="menuBrand">PUB JUKEBOX</h1></div>
+      <div class="menu-mark">BAR MENU</div>
+    </header>
+    <div class="menu-grid" id="menuGrid"></div>
+    <div class="menu-empty hidden" id="menuEmpty">Nabídku doplň v administraci.</div>
+  </section>
+
   <section class="overlay hidden" id="overlay">
     <div>
       <span>PRÁVĚ HRAJE</span>
       <strong id="nowTitle">PUB JUKEBOX</strong>
       <small id="nowArtist"></small>
     </div>
-    <img id="qr" src="/api/admin/qr.svg" alt="QR kód">
+    <div class="qr-lockup"><small id="overlayBrand">PUB JUKEBOX</small><img id="qr" src="/api/admin/qr.svg" alt="QR kód"></div>
   </section>
   <div class="tap hidden" id="tapToPlay">Klepni pro spuštění zvuku</div>
   <script src="https://www.youtube.com/iframe_api"></script>

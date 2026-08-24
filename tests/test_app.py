@@ -98,6 +98,53 @@ def test_invalid_pin_and_video_are_rejected(tmp_path, monkeypatch):
         assert add(client, "bad", "Bad").status_code == 422
 
 
+def test_admin_manages_venue_tv_and_audio_profile(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        default_display = client.get("/api/display")
+        assert default_display.status_code == 200
+        assert default_display.json()["tv_mode"] == "clip"
+        assert client.put(
+            "/api/admin/display",
+            json={"business_name": "Ztracený bar", "tv_mode": "dj", "menu_text": "Pivo | 49 Kč"},
+        ).status_code == 401
+
+        login(client)
+        saved = client.put(
+            "/api/admin/display",
+            json={
+                "business_name": "Ztracený <bar>",
+                "tv_mode": "menu",
+                "menu_text": "PIVO\nRadegast 10 | 49 Kč\nGin & tonic | 115 Kč",
+                "audio_mode": "bass_guard",
+                "target_lufs": -15,
+                "limiter_ceiling_db": -1.5,
+                "bass_guard_strength": 72,
+            },
+        )
+        assert saved.status_code == 200
+        assert saved.json()["business_name"] == "Ztracený bar"
+        assert saved.json()["revision"] == 1
+
+        display = client.get("/api/display").json()
+        assert display["business_name"] == "Ztracený bar"
+        assert display["tv_mode"] == "menu"
+        assert "Radegast 10 | 49 Kč" in display["menu_text"]
+        assert client.get("/api/config").json()["bar_name"] == "Ztracený bar"
+
+        config = client.get("/api/admin/config").json()
+        assert config["audio_mode"] == "bass_guard"
+        assert config["target_lufs"] == -15
+        assert config["limiter_ceiling_db"] == -1.5
+        assert config["bass_guard_strength"] == 72
+        assert config["audio_processor"]["connected"] is False
+
+        invalid = client.put(
+            "/api/admin/display",
+            json={"business_name": "Bar", "tv_mode": "invalid", "menu_text": ""},
+        )
+        assert invalid.status_code == 422
+
+
 def test_supabase_routes_use_rpc(tmp_path, monkeypatch):
     calls = []
 

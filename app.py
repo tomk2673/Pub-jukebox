@@ -4,6 +4,7 @@ import base64
 import hashlib
 import hmac
 import io
+import json
 import os
 import re
 import secrets
@@ -37,6 +38,8 @@ SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "").strip()
 JUKEBOX_DB_SECRET = os.getenv("JUKEBOX_DB_SECRET", "").strip()
 USE_SUPABASE = bool(SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY and JUKEBOX_DB_SECRET)
 BAR_NAME = os.getenv("BAR_NAME", "PUB JUKEBOX")
+VENUE_KEY = re.sub(r"[^a-z0-9-]", "-", os.getenv("VENUE_KEY", "ztraceny-bar").lower()).strip("-")[:64] or "venue"
+DEFAULT_MENU_TEXT = os.getenv("DEFAULT_MENU_TEXT", "").strip()
 PRIORITY_PRICE_CZK = max(0, int(os.getenv("PRIORITY_PRICE_CZK", "5")))
 MAX_QUEUE_LENGTH = max(5, int(os.getenv("MAX_QUEUE_LENGTH", "50")))
 MAX_ACTIVE_PER_GUEST = max(1, int(os.getenv("MAX_ACTIVE_PER_GUEST", "3")))
@@ -94,9 +97,31 @@ def init_db() -> None:
                 updated_at INTEGER NOT NULL DEFAULT 0
             );
             INSERT OR IGNORE INTO player_state(id, updated_at) VALUES(1, 0);
+            CREATE TABLE IF NOT EXISTS venue_settings(
+                venue_key TEXT PRIMARY KEY,
+                business_name TEXT NOT NULL,
+                tv_mode TEXT NOT NULL DEFAULT 'clip' CHECK(tv_mode IN ('clip','dj','menu')),
+                menu_text TEXT NOT NULL DEFAULT '',
+                audio_mode TEXT NOT NULL DEFAULT 'standard' CHECK(audio_mode IN ('standard','bass_guard')),
+                target_lufs INTEGER NOT NULL DEFAULT -16,
+                limiter_ceiling_db REAL NOT NULL DEFAULT -1.0,
+                bass_guard_strength INTEGER NOT NULL DEFAULT 65,
+                plan TEXT NOT NULL DEFAULT 'pilot',
+                features TEXT NOT NULL DEFAULT '{"search":true,"voting":true,"priority":true,"tv_modes":true,"drink_menu":true,"bass_guard":true}',
+                is_active INTEGER NOT NULL DEFAULT 1,
+                revision INTEGER NOT NULL DEFAULT 0,
+                updated_at INTEGER NOT NULL DEFAULT 0
+            );
             CREATE INDEX IF NOT EXISTS queue_active_idx
                 ON queue(status, priority DESC, votes DESC, id ASC);
             """
+        )
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO venue_settings(venue_key,business_name,menu_text,updated_at)
+            VALUES(?,?,?,?)
+            """,
+            (VENUE_KEY, BAR_NAME, DEFAULT_MENU_TEXT, now()),
         )
 
         # Upgrade databases made by the original prototype without losing their queue.
@@ -113,18 +138,28 @@ def init_db() -> None:
         for column, definition in migrations.items():
             if column not in existing:
                 conn.execute(f"ALTER TABLE queue ADD COLUMN {column} {definition}")
+        venue_columns = {row["name"] for row in conn.execute("PRAGMA table_info(venue_settings)")}
+        venue_migrations = {
+            "audio_mode": "TEXT NOT NULL DEFAULT 'standard'",
+            "target_lufs": "INTEGER NOT NULL DEFAULT -16",
+            "limiter_ceiling_db": "REAL NOT NULL DEFAULT -1.0",
+            "bass_guard_strength": "INTEGER NOT NULL DEFAULT 65",
+        }
+        for column, definition in venue_migrations.items():
+            if column not in venue_columns:
+                conn.execute(f"ALTER TABLE venue_settings ADD COLUMN {column} {definition}")
         conn.execute("UPDATE queue SET created_at=id WHERE created_at=0")
         conn.commit()
 
 
-def db_rpc(action: str, payload: dict | None = None):
-    """Call the private jukebox API exposed through Supabase PostgREST."""
+def supabase_rpc(function_name: str, action: str, payload: dict | None = None):
+    """Call a private jukebox RPC through Supabase PostgREST."""
     if not USE_SUPABASE:
         raise RuntimeError("Supabase is not configured")
     try:
         with httpx.Client(trust_env=False) as client:
             response = client.post(
-                f"{SUPABASE_URL}/rest/v1/rpc/jukebox_rpc",
+                f"{SUPABASE_URL}/rest/v1/rpc/{function_name}",
                 headers={
                     "apikey": SUPABASE_PUBLISHABLE_KEY,
                     "Authorization": f"Bearer {SUPABASE_PUBLISHABLE_KEY}",
@@ -143,6 +178,15 @@ def db_rpc(action: str, payload: dict | None = None):
     return result
 
 
+def db_rpc(action: str, payload: dict | None = None):
+    return supabase_rpc("jukebox_rpc", action, payload)
+
+
+def settings_rpc(action: str, payload: dict | None = None):
+    body = {"venue_key": VENUE_KEY, **(payload or {})}
+    return supabase_rpc("jukebox_settings_rpc", action, body)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     if not USE_SUPABASE:
@@ -150,7 +194,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="PUB Jukebox", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="PUB Jukebox", version="1.1.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
@@ -182,12 +226,111 @@ class PlayerControl(BaseModel):
     value: int | bool | None = None
 
 
+class VenueSettingsUpdate(BaseModel):
+    business_name: str = Field(min_length=2, max_length=80)
+    tv_mode: Literal["clip", "dj", "menu"] = "clip"
+    menu_text: str = Field(default="", max_length=4000)
+    audio_mode: Literal["standard", "bass_guard"] = "standard"
+    target_lufs: int = Field(default=-16, ge=-24, le=-8)
+    limiter_ceiling_db: float = Field(default=-1.0, ge=-6.0, le=0.0)
+    bass_guard_strength: int = Field(default=65, ge=0, le=100)
+
+
 def now() -> int:
     return int(time.time())
 
 
 def clean_text(value: str, limit: int) -> str:
     return " ".join(value.replace("<", "").replace(">", "").split())[:limit]
+
+
+def clean_menu(value: str) -> str:
+    lines = [clean_text(line, 140) for line in value.splitlines()]
+    return "\n".join(line for line in lines if line)[:4000]
+
+
+def venue_settings() -> dict:
+    if USE_SUPABASE:
+        result = settings_rpc("get")
+        if not isinstance(result, dict):
+            raise HTTPException(503, "Profil provozovny není dostupný.")
+        return result
+    with connection() as conn:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO venue_settings(venue_key,business_name,menu_text,updated_at)
+            VALUES(?,?,?,?)
+            """,
+            (VENUE_KEY, BAR_NAME, DEFAULT_MENU_TEXT, now()),
+        )
+        row = conn.execute(
+            "SELECT * FROM venue_settings WHERE venue_key=?", (VENUE_KEY,)
+        ).fetchone()
+        conn.commit()
+    result = dict(row)
+    if isinstance(result.get("features"), str):
+        result["features"] = json.loads(result["features"])
+    result["is_active"] = bool(result.get("is_active", True))
+    return result
+
+
+def update_venue_settings(payload: VenueSettingsUpdate) -> dict:
+    business_name = clean_text(payload.business_name, 80)
+    menu_text = clean_menu(payload.menu_text)
+    if len(business_name) < 2:
+        raise HTTPException(422, "Název podniku je příliš krátký.")
+    if USE_SUPABASE:
+        result = settings_rpc(
+            "update",
+            {
+                "business_name": business_name,
+                "tv_mode": payload.tv_mode,
+                "menu_text": menu_text,
+                "audio_mode": payload.audio_mode,
+                "target_lufs": payload.target_lufs,
+                "limiter_ceiling_db": payload.limiter_ceiling_db,
+                "bass_guard_strength": payload.bass_guard_strength,
+            },
+        )
+        if not isinstance(result, dict):
+            raise HTTPException(503, "Nastavení se nepodařilo uložit.")
+        return result
+    with connection() as conn:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO venue_settings(venue_key,business_name,menu_text,updated_at)
+            VALUES(?,?,?,?)
+            """,
+            (VENUE_KEY, BAR_NAME, DEFAULT_MENU_TEXT, now()),
+        )
+        conn.execute(
+            """
+            UPDATE venue_settings
+            SET business_name=?, tv_mode=?, menu_text=?, audio_mode=?, target_lufs=?,
+                limiter_ceiling_db=?, bass_guard_strength=?, revision=revision+1, updated_at=?
+            WHERE venue_key=?
+            """,
+            (
+                business_name,
+                payload.tv_mode,
+                menu_text,
+                payload.audio_mode,
+                payload.target_lufs,
+                payload.limiter_ceiling_db,
+                payload.bass_guard_strength,
+                now(),
+                VENUE_KEY,
+            ),
+        )
+        row = conn.execute(
+            "SELECT * FROM venue_settings WHERE venue_key=?", (VENUE_KEY,)
+        ).fetchone()
+        conn.commit()
+    result = dict(row)
+    if isinstance(result.get("features"), str):
+        result["features"] = json.loads(result["features"])
+    result["is_active"] = bool(result.get("is_active", True))
+    return result
 
 
 def make_token(kind: str, subject: str) -> str:
@@ -388,12 +531,26 @@ def health():
 
 @app.get("/api/config")
 def config():
+    profile = venue_settings()
     return {
-        "bar_name": BAR_NAME,
+        "bar_name": profile["business_name"],
         "priority_price_czk": PRIORITY_PRICE_CZK,
         "max_active_per_guest": MAX_ACTIVE_PER_GUEST,
         "search_enabled": True,
         "official_youtube_search": bool(YOUTUBE_API_KEY),
+    }
+
+
+@app.get("/api/display")
+def display_settings():
+    profile = venue_settings()
+    if not profile.get("is_active", True):
+        raise HTTPException(403, "Provozovna není aktivní.")
+    return {
+        "business_name": profile["business_name"],
+        "tv_mode": profile["tv_mode"],
+        "menu_text": profile.get("menu_text", ""),
+        "revision": profile.get("revision", 0),
     }
 
 
@@ -434,15 +591,33 @@ def admin_logout(response: Response):
 @app.get("/api/admin/config")
 def admin_config(request: Request):
     require_admin(request)
+    profile = venue_settings()
     join_url = f"{public_base(request)}/guest?code={quote(JOIN_CODE)}"
     return {
-        "bar_name": BAR_NAME,
+        "bar_name": profile["business_name"],
+        "business_name": profile["business_name"],
+        "tv_mode": profile["tv_mode"],
+        "menu_text": profile.get("menu_text", ""),
+        "plan": profile.get("plan", "pilot"),
+        "features": profile.get("features", {}),
+        "is_active": bool(profile.get("is_active", True)),
+        "audio_mode": profile.get("audio_mode", "standard"),
+        "target_lufs": int(profile.get("target_lufs", -16)),
+        "limiter_ceiling_db": float(profile.get("limiter_ceiling_db", -1.0)),
+        "bass_guard_strength": int(profile.get("bass_guard_strength", 65)),
+        "audio_processor": {"connected": False, "status": "Čeká na místní zvukový modul"},
         "join_url": join_url,
         "priority_price_czk": PRIORITY_PRICE_CZK,
         "night_volume": NIGHT_VOLUME,
         "search_provider": "YouTube Data API" if YOUTUBE_API_KEY else "automatický záložní vyhledávač",
         "production_secrets_ready": SECRET_KEY != b"dev-only-change-me" and ADMIN_PIN != "2673",
     }
+
+
+@app.put("/api/admin/display")
+def save_display_settings(payload: VenueSettingsUpdate, request: Request):
+    require_admin(request)
+    return update_venue_settings(payload)
 
 
 @app.get("/api/admin/qr.svg")
