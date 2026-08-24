@@ -18,21 +18,21 @@ Webový jukebox pro bar. Host načte QR kód, vyhledá skladbu podle názvu na Y
 - ruční potvrzení přednosti za 5 Kč
 - noční limit celkové hlasitosti
 - instalace na plochu iPhonu jako webová aplikace
-- trvalá SQLite databáze na připojeném disku hostingu
+- trvalá sdílená databáze Supabase (na Vercelu), lokálně SQLite
 
-## Spuštění bez počítače – Render
+## Spuštění bez počítače – Vercel + Supabase
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/tomk2673/Pub-jukebox)
+Ostrá verze běží jako FastAPI aplikace na Vercelu. Fronta, hlasy a stav přehrávače jsou
+uložené v Supabase, takže se neztratí při uspání nebo novém nasazení serverless funkce.
 
-Blueprint vytvoří webovou službu a 1GB trvalý disk. Při nasazení zadej nový `ADMIN_PIN`. `JOIN_CODE` a `SECRET_KEY` se vytvoří automaticky.
+V projektu Vercel nastav `ADMIN_PIN`, `JOIN_CODE`, `SECRET_KEY`, `SUPABASE_URL`,
+`SUPABASE_PUBLISHABLE_KEY` a `JUKEBOX_DB_SECRET`. Tajné hodnoty nepatří do repozitáře.
 
 Po nasazení otevři:
 
-- `https://tvoje-adresa.onrender.com/admin` – ovládání obsluhy a QR kód
-- `https://tvoje-adresa.onrender.com/tv` – obrazovka s YouTube přehrávačem
+- `https://tvoje-adresa.vercel.app/admin` – ovládání obsluhy a QR kód
+- `https://tvoje-adresa.vercel.app/tv` – obrazovka s YouTube přehrávačem
 - host vstupuje přes QR kód z administrace
-
-Render služba s trvalým diskem je placená. Je to nejjednodušší spolehlivá varianta bez zapnutého počítače; bezplatný server s dočasným diskem by po restartu ztratil frontu.
 
 ## Vyhledávání
 
@@ -40,7 +40,7 @@ Aplikace funguje hned přes metadata-only záložní vyhledávač. Pro ostrý pr
 
 1. V Google Cloud Console zapni **YouTube Data API v3**.
 2. Vytvoř API key a omez ho jen na YouTube Data API v3.
-3. V Renderu přidej proměnnou `YOUTUBE_API_KEY`.
+3. Ve Vercelu přidej proměnnou `YOUTUBE_API_KEY`.
 4. Restartuj službu.
 
 API klíč nikdy nevkládej do zdrojového kódu ani do veřejného GitHubu.
@@ -65,6 +65,9 @@ Viz `.env.example`. Nejdůležitější proměnné:
 | `SECRET_KEY` | podpis přihlašovacích cookies |
 | `YOUTUBE_API_KEY` | volitelný oficiální YouTube vyhledávač |
 | `JUKEBOX_DB` | cesta k SQLite databázi |
+| `SUPABASE_URL` | URL produkčního Supabase projektu |
+| `SUPABASE_PUBLISHABLE_KEY` | veřejný klíč pro backendové RPC |
+| `JUKEBOX_DB_SECRET` | tajný klíč mezi aplikací a databázovým RPC |
 | `PRIORITY_PRICE_CZK` | cena ručně potvrzené přednosti |
 | `NIGHT_VOLUME` | limit hlasitosti v nočním režimu |
 

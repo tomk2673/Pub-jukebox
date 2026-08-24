@@ -8,6 +8,7 @@ VIDEO_B = "9bZkp7q19f0"
 
 def make_client(tmp_path, monkeypatch):
     monkeypatch.setattr(jukebox, "DB_PATH", tmp_path / "test.db")
+    monkeypatch.setattr(jukebox, "USE_SUPABASE", False)
     jukebox.LOGIN_FAILURES.clear()
     jukebox.SEARCH_CACHE.clear()
     return TestClient(jukebox.app)
@@ -95,3 +96,30 @@ def test_invalid_pin_and_video_are_rejected(tmp_path, monkeypatch):
         assert client.post("/api/admin/login", json={"pin": "wrong"}).status_code == 401
         join(client)
         assert add(client, "bad", "Bad").status_code == 422
+
+
+def test_supabase_routes_use_rpc(tmp_path, monkeypatch):
+    calls = []
+
+    def fake_rpc(action, payload=None):
+        calls.append((action, payload or {}))
+        if action == "health":
+            return {"status": "ok", "backend": "supabase"}
+        if action == "add_song":
+            return {"id": 7, "video_id": payload["video_id"], "title": payload["title"]}
+        if action == "queue_list":
+            return []
+        return {"ok": True}
+
+    monkeypatch.setattr(jukebox, "USE_SUPABASE", True)
+    monkeypatch.setattr(jukebox, "db_rpc", fake_rpc)
+    with TestClient(jukebox.app) as client:
+        join(client)
+        assert client.get("/health").json()["backend"] == "supabase"
+        created = add(client, VIDEO_A, "Persistent song")
+        assert created.status_code == 201
+        assert created.json()["id"] == 7
+        assert client.get("/api/queue").status_code == 200
+
+    assert [action for action, _ in calls] == ["health", "add_song", "queue_list"]
+    assert calls[1][1]["max_queue"] == jukebox.MAX_QUEUE_LENGTH

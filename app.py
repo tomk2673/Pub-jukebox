@@ -32,6 +32,10 @@ JOIN_CODE = os.getenv("JOIN_CODE", "ztraceny-bar")
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-only-change-me").encode("utf-8")
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "").strip()
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
+SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "").strip()
+JUKEBOX_DB_SECRET = os.getenv("JUKEBOX_DB_SECRET", "").strip()
+USE_SUPABASE = bool(SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY and JUKEBOX_DB_SECRET)
 BAR_NAME = os.getenv("BAR_NAME", "PUB JUKEBOX")
 PRIORITY_PRICE_CZK = max(0, int(os.getenv("PRIORITY_PRICE_CZK", "5")))
 MAX_QUEUE_LENGTH = max(5, int(os.getenv("MAX_QUEUE_LENGTH", "50")))
@@ -113,9 +117,36 @@ def init_db() -> None:
         conn.commit()
 
 
+def db_rpc(action: str, payload: dict | None = None):
+    """Call the private jukebox API exposed through Supabase PostgREST."""
+    if not USE_SUPABASE:
+        raise RuntimeError("Supabase is not configured")
+    try:
+        with httpx.Client(trust_env=False) as client:
+            response = client.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/jukebox_rpc",
+                headers={
+                    "apikey": SUPABASE_PUBLISHABLE_KEY,
+                    "Authorization": f"Bearer {SUPABASE_PUBLISHABLE_KEY}",
+                    "x-jukebox-secret": JUKEBOX_DB_SECRET,
+                    "Content-Type": "application/json",
+                },
+                json={"action": action, "payload": payload or {}},
+                timeout=12,
+            )
+        response.raise_for_status()
+        result = response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        raise HTTPException(503, "Databáze jukeboxu je dočasně nedostupná.") from exc
+    if isinstance(result, dict) and result.get("_error"):
+        raise HTTPException(int(result.get("_status", 400)), str(result["_error"]))
+    return result
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    init_db()
+    if not USE_SUPABASE:
+        init_db()
     yield
 
 
@@ -249,6 +280,9 @@ def extract_video_id(value: str) -> str | None:
 
 def queue_rows(request: Request | None = None) -> list[dict]:
     voter = guest_id(request) if request else None
+    if USE_SUPABASE:
+        result = db_rpc("queue_list", {"voter_id": voter or ""})
+        return result if isinstance(result, list) else []
     with connection() as conn:
         rows = conn.execute(
             """
@@ -344,6 +378,9 @@ def tv_page():
 
 @app.get("/health")
 def health():
+    if USE_SUPABASE:
+        result = db_rpc("health")
+        return {**result, "version": app.version}
     with connection() as conn:
         conn.execute("SELECT 1").fetchone()
     return {"status": "ok", "version": app.version}
@@ -437,6 +474,21 @@ def add_to_queue(song: Song, request: Request):
     requested_by = clean_text(song.requested_by, 40)
     thumbnail = song.thumbnail if song.thumbnail.startswith("https://") else ""
 
+    if USE_SUPABASE:
+        return db_rpc(
+            "add_song",
+            {
+                "requester_id": requester,
+                "video_id": video_id,
+                "title": title,
+                "artist": artist,
+                "thumbnail": thumbnail,
+                "requested_by": requested_by,
+                "max_queue": MAX_QUEUE_LENGTH,
+                "max_guest": MAX_ACTIVE_PER_GUEST,
+            },
+        )
+
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
         active_count = conn.execute(
@@ -478,6 +530,8 @@ def add_to_queue(song: Song, request: Request):
 @app.post("/api/queue/{song_id}/vote")
 def vote(song_id: int, request: Request):
     voter = require_guest(request)
+    if USE_SUPABASE:
+        return db_rpc("vote", {"song_id": song_id, "voter_id": voter})
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
         song = conn.execute(
@@ -500,6 +554,8 @@ def vote(song_id: int, request: Request):
 @app.post("/api/queue/{song_id}/priority")
 def priority(song_id: int, request: Request):
     require_admin(request)
+    if USE_SUPABASE:
+        return db_rpc("priority", {"song_id": song_id})
     with connection() as conn:
         changed = conn.execute(
             """
@@ -520,6 +576,9 @@ def request_priority(song_id: int, request: Request):
     requester = require_guest(request)
     if requester == "admin":
         raise HTTPException(400, "Admin může přednost potvrdit rovnou.")
+    if USE_SUPABASE:
+        db_rpc("priority_request", {"song_id": song_id, "requester_id": requester})
+        return {"ok": True, "message": f"Zaplať {PRIORITY_PRICE_CZK} Kč u baru. Obsluha pak přednost potvrdí."}
     with connection() as conn:
         changed = conn.execute(
             """
@@ -537,6 +596,8 @@ def request_priority(song_id: int, request: Request):
 @app.post("/api/queue/{song_id}/play")
 def play(song_id: int, request: Request):
     require_admin(request)
+    if USE_SUPABASE:
+        return db_rpc("play", {"song_id": song_id})
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
         selected = conn.execute(
@@ -556,6 +617,8 @@ def play(song_id: int, request: Request):
 @app.delete("/api/queue/{song_id}")
 def remove_song(song_id: int, request: Request):
     require_admin(request)
+    if USE_SUPABASE:
+        return db_rpc("remove", {"song_id": song_id})
     with connection() as conn:
         existing = conn.execute("SELECT status FROM queue WHERE id=?", (song_id,)).fetchone()
         if not existing or existing["status"] not in {"queued", "playing"}:
@@ -574,6 +637,8 @@ def remove_song(song_id: int, request: Request):
 @app.post("/api/player/start")
 def player_start(request: Request):
     require_admin(request)
+    if USE_SUPABASE:
+        return db_rpc("player_start")
     with connection() as conn:
         playing = current_song(conn)
     if playing:
@@ -584,18 +649,24 @@ def player_start(request: Request):
 @app.post("/api/player/next")
 def player_next(request: Request):
     require_admin(request)
+    if USE_SUPABASE:
+        return db_rpc("player_next")
     return {"ok": True, "song": advance_queue()}
 
 
 @app.post("/api/player/ended")
 def player_ended(request: Request):
     require_admin(request)
+    if USE_SUPABASE:
+        return db_rpc("player_ended")
     return {"ok": True, "song": advance_queue()}
 
 
 @app.get("/api/player/state")
 def get_player_state(request: Request):
     require_admin(request)
+    if USE_SUPABASE:
+        return db_rpc("player_state")
     with connection() as conn:
         state = dict(conn.execute("SELECT * FROM player_state WHERE id=1").fetchone())
         playing = current_song(conn)
@@ -606,6 +677,15 @@ def get_player_state(request: Request):
 @app.post("/api/player/control")
 def player_control(payload: PlayerControl, request: Request):
     require_admin(request)
+    if USE_SUPABASE:
+        if payload.action == "volume" and (
+            not isinstance(payload.value, int) or isinstance(payload.value, bool)
+        ):
+            raise HTTPException(422, "Hlasitost musí být číslo 0–100.")
+        return db_rpc(
+            "player_control",
+            {"command": payload.action, "value": payload.value},
+        )
     with connection() as conn:
         if payload.action == "volume":
             if not isinstance(payload.value, int) or isinstance(payload.value, bool):
