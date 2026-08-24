@@ -87,6 +87,21 @@
               </label>
             </div>
 
+            <div class="field-label">Přechod mezi skladbami</div>
+            <div class="mode-picker audio-picker">
+              <label class="mode-option">
+                <input type="radio" name="transitionMode" value="scratch" checked>
+                <span><strong>Živý DJ mix</strong><small>5 různých přechodů bez opakování za sebou</small></span>
+              </label>
+              <label class="mode-option">
+                <input type="radio" name="transitionMode" value="none">
+                <span><strong>Bez přechodu</strong><small>Další klip se spustí rovnou</small></span>
+              </label>
+            </div>
+            <div class="transition-control" id="transitionControls">
+              <label>Hlasitost přechodu <strong id="transitionVolumeValue">55 %</strong><input id="transitionVolume" type="range" min="0" max="100" value="55"></label>
+            </div>
+
             <label class="field-label" for="menuText">Nápojová nabídka</label>
             <textarea id="menuText" rows="7" maxlength="4000" placeholder="Každou položku napiš na nový řádek:&#10;Radegast rázná 10 | 45 Kč&#10;Gin &amp; tonic | 115 Kč&#10;&#10;Samostatný řádek bez ceny vytvoří nadpis sekce."></textarea>
 

@@ -126,12 +126,23 @@ function renderVenueSettings() {
   if (mode) mode.checked = true;
   const audioMode = document.querySelector(`input[name="audioMode"][value="${state.config.audio_mode || "standard"}"]`);
   if (audioMode) audioMode.checked = true;
+  const transitionMode = document.querySelector(`input[name="transitionMode"][value="${state.config.transition_mode || "scratch"}"]`);
+  if (transitionMode) transitionMode.checked = true;
+  $("transitionVolume").value = state.config.transition_volume ?? 55;
   $("targetLufs").value = state.config.target_lufs ?? -16;
   $("bassStrength").value = state.config.bass_guard_strength ?? 65;
   $("limiterCeiling").value = state.config.limiter_ceiling_db ?? -1;
   renderAudioValues();
+  renderTransitionValues();
   renderAudioProcessor();
   renderNetworkLock();
+}
+
+function renderTransitionValues() {
+  $("transitionVolumeValue").textContent = `${$("transitionVolume").value} %`;
+  const enabled = document.querySelector('input[name="transitionMode"]:checked')?.value === "scratch";
+  $("transitionControls").classList.toggle("disabled-controls", !enabled);
+  $("transitionVolume").disabled = !enabled;
 }
 
 function renderNetworkLock() {
@@ -187,6 +198,7 @@ async function saveVenueSettings(event) {
   event.preventDefault();
   const selectedMode = document.querySelector('input[name="tvMode"]:checked');
   const selectedAudioMode = document.querySelector('input[name="audioMode"]:checked');
+  const selectedTransitionMode = document.querySelector('input[name="transitionMode"]:checked');
   displayStatus("Ukládám a přepínám TV…");
   try {
     const saved = await api("/api/admin/display", {
@@ -195,6 +207,8 @@ async function saveVenueSettings(event) {
         business_name: $("businessName").value,
         tv_mode: selectedMode?.value || "clip",
         menu_text: $("menuText").value,
+        transition_mode: selectedTransitionMode?.value || "scratch",
+        transition_volume: Number($("transitionVolume").value),
         audio_mode: selectedAudioMode?.value || "standard",
         target_lufs: Number($("targetLufs").value),
         limiter_ceiling_db: Number($("limiterCeiling").value),
@@ -274,6 +288,8 @@ function wireEvents() {
   $("loginForm").addEventListener("submit", login);
   $("displayForm").addEventListener("submit", saveVenueSettings);
   for (const input of document.querySelectorAll('input[name="audioMode"]')) input.addEventListener("change", renderAudioValues);
+  for (const input of document.querySelectorAll('input[name="transitionMode"]')) input.addEventListener("change", renderTransitionValues);
+  $("transitionVolume").addEventListener("input", renderTransitionValues);
   for (const id of ["targetLufs", "bassStrength", "limiterCeiling"]) $(id).addEventListener("input", renderAudioValues);
   $("startButton").addEventListener("click", () => playerAction("/api/player/start", "Přehrávač spuštěn."));
   $("nextButton").addEventListener("click", () => playerAction("/api/player/next", "Přeskakuji na další skladbu."));

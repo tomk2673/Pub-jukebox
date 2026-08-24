@@ -104,6 +104,8 @@ def init_db() -> None:
                 business_name TEXT NOT NULL,
                 tv_mode TEXT NOT NULL DEFAULT 'clip' CHECK(tv_mode IN ('clip','dj','menu')),
                 menu_text TEXT NOT NULL DEFAULT '',
+                transition_mode TEXT NOT NULL DEFAULT 'scratch' CHECK(transition_mode IN ('none','scratch')),
+                transition_volume INTEGER NOT NULL DEFAULT 55,
                 audio_mode TEXT NOT NULL DEFAULT 'standard' CHECK(audio_mode IN ('standard','bass_guard')),
                 target_lufs INTEGER NOT NULL DEFAULT -16,
                 limiter_ceiling_db REAL NOT NULL DEFAULT -1.0,
@@ -158,6 +160,8 @@ def init_db() -> None:
             "limiter_ceiling_db": "REAL NOT NULL DEFAULT -1.0",
             "bass_guard_strength": "INTEGER NOT NULL DEFAULT 65",
             "allowed_network": "TEXT NOT NULL DEFAULT ''",
+            "transition_mode": "TEXT NOT NULL DEFAULT 'scratch'",
+            "transition_volume": "INTEGER NOT NULL DEFAULT 55",
         }
         for column, definition in venue_migrations.items():
             if column not in venue_columns:
@@ -208,7 +212,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="PUB Jukebox", version="1.3.0", lifespan=lifespan)
+app = FastAPI(title="PUB Jukebox", version="1.4.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
@@ -244,6 +248,8 @@ class VenueSettingsUpdate(BaseModel):
     business_name: str = Field(min_length=2, max_length=80)
     tv_mode: Literal["clip", "dj", "menu"] = "clip"
     menu_text: str = Field(default="", max_length=4000)
+    transition_mode: Literal["none", "scratch"] = "scratch"
+    transition_volume: int = Field(default=55, ge=0, le=100)
     audio_mode: Literal["standard", "bass_guard"] = "standard"
     target_lufs: int = Field(default=-16, ge=-24, le=-8)
     limiter_ceiling_db: float = Field(default=-1.0, ge=-6.0, le=0.0)
@@ -388,6 +394,8 @@ def update_venue_settings(payload: VenueSettingsUpdate) -> dict:
                 "business_name": business_name,
                 "tv_mode": payload.tv_mode,
                 "menu_text": menu_text,
+                "transition_mode": payload.transition_mode,
+                "transition_volume": payload.transition_volume,
                 "audio_mode": payload.audio_mode,
                 "target_lufs": payload.target_lufs,
                 "limiter_ceiling_db": payload.limiter_ceiling_db,
@@ -408,7 +416,7 @@ def update_venue_settings(payload: VenueSettingsUpdate) -> dict:
         conn.execute(
             """
             UPDATE venue_settings
-            SET business_name=?, tv_mode=?, menu_text=?, audio_mode=?, target_lufs=?,
+            SET business_name=?, tv_mode=?, menu_text=?, transition_mode=?, transition_volume=?, audio_mode=?, target_lufs=?,
                 limiter_ceiling_db=?, bass_guard_strength=?, revision=revision+1, updated_at=?
             WHERE venue_key=?
             """,
@@ -416,6 +424,8 @@ def update_venue_settings(payload: VenueSettingsUpdate) -> dict:
                 business_name,
                 payload.tv_mode,
                 menu_text,
+                payload.transition_mode,
+                payload.transition_volume,
                 payload.audio_mode,
                 payload.target_lufs,
                 payload.limiter_ceiling_db,
@@ -727,6 +737,8 @@ def display_settings():
         "business_name": profile["business_name"],
         "tv_mode": profile["tv_mode"],
         "menu_text": profile.get("menu_text", ""),
+        "transition_mode": profile.get("transition_mode", "scratch"),
+        "transition_volume": int(profile.get("transition_volume", 55)),
         "audio_mode": profile.get("audio_mode", "standard"),
         "target_lufs": int(profile.get("target_lufs", -16)),
         "limiter_ceiling_db": float(profile.get("limiter_ceiling_db", -1.0)),
@@ -781,6 +793,8 @@ def admin_config(request: Request):
         "business_name": profile["business_name"],
         "tv_mode": profile["tv_mode"],
         "menu_text": profile.get("menu_text", ""),
+        "transition_mode": profile.get("transition_mode", "scratch"),
+        "transition_volume": int(profile.get("transition_volume", 55)),
         "plan": profile.get("plan", "pilot"),
         "features": profile.get("features", {}),
         "is_active": bool(profile.get("is_active", True)),

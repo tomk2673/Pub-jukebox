@@ -1,8 +1,8 @@
-# PUB Jukebox 1.3
+# PUB Jukebox 1.4
 
 Webový jukebox pro bar. Host načte QR kód, vyhledá skladbu podle názvu na YouTube, přidá ji do společné fronty a může jednou hlasovat. Obsluha řídí pořadí a TV přehrává frontu automaticky.
 
-## Co verze 1.3 umí
+## Co verze 1.4 umí
 
 - hledání skladeb podle názvu a interpreta
 - záložní YouTube vyhledávání i bez API klíče
@@ -15,6 +15,8 @@ Webový jukebox pro bar. Host načte QR kód, vyhledá skladbu podle názvu na Y
 - QR odkaz pro hosty
 - vlastní název provozovny uložený v cloudu
 - tři živě přepínatelné TV režimy: videoklip, virtuální DJ a nápojová nabídka
+- pět syntetizovaných DJ přechodů střídaných bez okamžitého opakování, s nastavitelnou hlasitostí a bez cizích audiosamplů
+- dotykový štít TV přehrávače: zákazník nemůže klip zastavit, otevřít YouTube ani spustit druhou skladbu mimo frontu
 - TV přehrávač s automatickým pokračováním
 - pauza, pokračování, přeskočení a vzdálená hlasitost
 - ruční potvrzení přednosti za 5 Kč

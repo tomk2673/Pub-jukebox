@@ -8,7 +8,7 @@
   <title>TV · PUB Jukebox</title>
 </head>
 <body>
-  <div class="player-shell" id="playerShell"><div id="player"></div></div>
+  <div class="player-shell" id="playerShell"><div id="player"></div><div class="player-guard" aria-hidden="true"></div></div>
   <section class="tv-login" id="loginView">
     <form class="tv-login-card" id="loginForm">
       <div class="tv-logo">▶</div>
@@ -73,6 +73,11 @@
       <small id="nowArtist"></small>
     </div>
     <div class="qr-lockup"><small id="overlayBrand">PUB JUKEBOX</small><img id="qr" src="/api/admin/qr.svg" alt="QR kód"></div>
+  </section>
+  <section class="dj-transition hidden" id="djTransition" aria-live="polite">
+    <div class="scratch-disc" aria-hidden="true"><i></i></div>
+    <span id="transitionLabel">DJ TRANSITION</span>
+    <strong>DALŠÍ TRACK</strong>
   </section>
   <div class="tap hidden" id="tapToPlay">Klepni pro spuštění zvuku</div>
   <script src="https://www.youtube.com/iframe_api"></script>

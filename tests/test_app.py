@@ -92,6 +92,18 @@ def test_admin_controls_player_and_qr(tmp_path, monkeypatch):
         assert "svg" in qr.headers["content-type"]
 
 
+def test_tv_player_blocks_customer_youtube_controls(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        tv = client.get("/tv")
+        script = client.get("/static/tv.js")
+        style = client.get("/static/tv.css")
+        assert tv.status_code == 200
+        assert 'class="player-guard"' in tv.text
+        assert "disablekb: 1" in script.text
+        assert "fs: 0" in script.text
+        assert "pointer-events: none" in style.text
+
+
 def test_invalid_pin_and_video_are_rejected(tmp_path, monkeypatch):
     with make_client(tmp_path, monkeypatch) as client:
         assert client.post("/api/admin/login", json={"pin": "wrong"}).status_code == 401
@@ -116,6 +128,8 @@ def test_admin_manages_venue_tv_and_audio_profile(tmp_path, monkeypatch):
                 "business_name": "Ztracený <bar>",
                 "tv_mode": "menu",
                 "menu_text": "PIVO\nRadegast 10 | 49 Kč\nGin & tonic | 115 Kč",
+                "transition_mode": "scratch",
+                "transition_volume": 62,
                 "audio_mode": "bass_guard",
                 "target_lufs": -15,
                 "limiter_ceiling_db": -1.5,
@@ -130,6 +144,8 @@ def test_admin_manages_venue_tv_and_audio_profile(tmp_path, monkeypatch):
         assert display["business_name"] == "Ztracený bar"
         assert display["tv_mode"] == "menu"
         assert "Radegast 10 | 49 Kč" in display["menu_text"]
+        assert display["transition_mode"] == "scratch"
+        assert display["transition_volume"] == 62
         assert display["audio_mode"] == "bass_guard"
         assert display["target_lufs"] == -15
         assert client.get("/api/config").json()["bar_name"] == "Ztracený bar"
@@ -139,6 +155,8 @@ def test_admin_manages_venue_tv_and_audio_profile(tmp_path, monkeypatch):
         assert config["target_lufs"] == -15
         assert config["limiter_ceiling_db"] == -1.5
         assert config["bass_guard_strength"] == 72
+        assert config["transition_mode"] == "scratch"
+        assert config["transition_volume"] == 62
         assert config["audio_processor"]["connected"] is False
 
         invalid = client.put(
