@@ -155,7 +155,7 @@ async function search(event) {
       ? { items: [await api(`/api/videos/resolve?url=${encodeURIComponent(query)}`)] }
       : await api(`/api/search?q=${encodeURIComponent(query)}&limit=8&mode=${mode}`);
     renderResults(data.items);
-    setStatus(`${data.items.length} výsledků${mode === "karaoke" ? " pro karaoke" : ""}`, "success");
+    setStatus(`${data.items.length} výsledků${mode === "karaoke" ? " s původním zpěvem a textem" : ""}`, "success");
   } catch (error) {
     setStatus(error.message, "error");
   } finally {

@@ -1,4 +1,4 @@
-# PUB Jukebox 1.5
+# PUB Jukebox 1.5.1
 
 Webový jukebox pro bar. Host načte QR kód, vyhledá skladbu podle názvu na YouTube, přidá ji do společné fronty a může jednou hlasovat. Obsluha řídí pořadí a TV přehrává frontu automaticky.
 
@@ -20,7 +20,7 @@ Webový jukebox pro bar. Host načte QR kód, vyhledá skladbu podle názvu na Y
 - dotykový štít TV přehrávače: zákazník nemůže klip zastavit, otevřít YouTube ani spustit druhou skladbu mimo frontu
 - AutoDJ zásobník pro plynulé pokračování při prázdné frontě; hostovská volba má vždy přednost
 - volitelné AutoDJ playlisty: český funk, české oldies, český hip-hop 90/00, karaoke a vlastní témata provozovny
-- samostatná volba karaoke v hledání hosta
+- samostatná volba karaoke: originální skladba se zpěvákem a textem ve videu, nikoli instrumentální podklad
 - TV přehrávač s automatickým pokračováním
 - pauza, pokračování, přeskočení a vzdálená hlasitost
 - ruční potvrzení přednosti za 5 Kč

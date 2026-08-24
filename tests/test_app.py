@@ -118,7 +118,7 @@ def test_guest_mobile_layout_blocks_horizontal_overscroll(tmp_path, monkeypatch)
         assert "overscroll-behavior-x: none" in style.text
         assert "touch-action: pan-y pinch-zoom" in style.text
         assert ".guest-app .results .song-card > .btn" in style.text
-        assert 'pub-jukebox-v5' in worker.text
+        assert 'pub-jukebox-v6' in worker.text
 
 
 def test_invalid_pin_and_video_are_rejected(tmp_path, monkeypatch):
@@ -221,7 +221,7 @@ def test_autodj_prepares_filler_but_guest_queue_stays_first(tmp_path, monkeypatc
         assert client.post("/api/player/ended").json()["song"]["video_id"] == VIDEO_B
 
 
-def test_karaoke_search_adds_karaoke_intent(tmp_path, monkeypatch):
+def test_karaoke_search_requires_lyrics_with_original_vocals(tmp_path, monkeypatch):
     queries = []
 
     def fake_search(query, limit):
@@ -234,7 +234,8 @@ def test_karaoke_search_adds_karaoke_intent(tmp_path, monkeypatch):
         response = client.get("/api/search?q=Zagorova&mode=karaoke")
         assert response.status_code == 200
         assert response.json()["mode"] == "karaoke"
-        assert "karaoke instrumental s textem" in queries[0]
+        assert queries[0] == "Zagorova lyrics original audio -instrumental -karaoke"
+        assert "s textem" not in queries[0]
 
 
 def test_windows_audio_processor_heartbeat(tmp_path, monkeypatch):

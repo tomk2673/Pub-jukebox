@@ -164,6 +164,7 @@ h2 { margin-bottom: 16px; font-size: clamp(23px, 4vw, 34px); letter-spacing: -0.
 .search-kind input { position: absolute; opacity: 0; pointer-events: none; }
 .search-kind span { display: block; padding: 8px 12px; border-radius: 8px; color: var(--muted); font-size: 12px; font-weight: 850; }
 .search-kind input:checked + span { color: #111; background: var(--amber); }
+.karaoke-note { margin: -4px 0 13px; color: var(--muted); font-size: 12px; }
 
 input {
   width: 100%;
