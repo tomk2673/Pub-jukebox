@@ -249,6 +249,11 @@ input[type="range"] { min-height: 28px; padding: 0; accent-color: var(--amber); 
 .module-copy { max-width: 660px; margin: 8px 0 13px; line-height: 1.55; }
 .processor-state { padding: 7px 10px; border: 1px solid rgba(255, 92, 104, .28); border-radius: 999px; color: #ff8f98; font-size: 10px; font-weight: 950; letter-spacing: .11em; background: rgba(255, 92, 104, .08); }
 .processor-state.connected { border-color: rgba(98,229,155,.3); color: var(--green); background: rgba(98,229,155,.08); }
+.processor-detail { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -2px 0 12px; }
+.install-guide { margin: 0 0 14px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 13px; background: rgba(0,0,0,.12); }
+.install-guide summary { cursor: pointer; color: var(--amber); font-size: 12px; font-weight: 850; }
+.install-guide ol { margin: 10px 0 0 20px; padding: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.install-guide code { color: var(--text); }
 .audio-picker { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .pro-option span::after { content: "PRO"; position: absolute; top: 9px; right: 9px; padding: 3px 5px; border-radius: 6px; color: #17120a; font-size: 8px; font-weight: 950; letter-spacing: .08em; background: var(--amber); }
 .audio-controls { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; margin-top: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 16px; background: rgba(0,0,0,.13); }
@@ -274,6 +279,7 @@ input[type="range"] { min-height: 28px; padding: 0; accent-color: var(--amber); 
   .mode-picker { grid-template-columns: 1fr; }
   .mode-option span { min-height: 68px; }
   .audio-controls { grid-template-columns: 1fr; }
+  .processor-detail { align-items: stretch; flex-direction: column; }
 }
 
 @media (max-width: 520px) {

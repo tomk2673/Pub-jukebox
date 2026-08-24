@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "PUB Jukebox · Night Bass Guard",
+  "description": "Vyrovnání hlasitosti, dynamická ochrana basů a limiter pro TV přehrávač PUB Jukebox.",
+  "version": "0.1.0",
+  "minimum_chrome_version": "116",
+  "permissions": ["activeTab", "offscreen", "scripting", "storage", "tabCapture"],
+  "host_permissions": ["https://*.vercel.app/*"],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "action": {
+    "default_title": "Zapnout Night Bass Guard"
+  }
+}

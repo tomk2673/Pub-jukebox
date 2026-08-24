@@ -129,6 +129,8 @@ def test_admin_manages_venue_tv_and_audio_profile(tmp_path, monkeypatch):
         assert display["business_name"] == "Ztracený bar"
         assert display["tv_mode"] == "menu"
         assert "Radegast 10 | 49 Kč" in display["menu_text"]
+        assert display["audio_mode"] == "bass_guard"
+        assert display["target_lufs"] == -15
         assert client.get("/api/config").json()["bar_name"] == "Ztracený bar"
 
         config = client.get("/api/admin/config").json()
@@ -143,6 +145,30 @@ def test_admin_manages_venue_tv_and_audio_profile(tmp_path, monkeypatch):
             json={"business_name": "Bar", "tv_mode": "invalid", "menu_text": ""},
         )
         assert invalid.status_code == 422
+
+
+def test_windows_audio_processor_heartbeat(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        heartbeat = {
+            "device_name": "Chrome na Windows",
+            "extension_version": "0.1.0",
+            "measured_lufs": -15.8,
+            "gain_db": 1.25,
+            "bass_reduction_db": 4.5,
+            "limiter_reduction_db": 0.75,
+        }
+        assert client.post("/api/admin/audio/heartbeat", json=heartbeat).status_code == 401
+        login(client)
+        saved = client.post("/api/admin/audio/heartbeat", json=heartbeat)
+        assert saved.status_code == 200
+        assert saved.json()["connected"] is True
+
+        status = client.get("/api/admin/audio/status").json()
+        assert status["connected"] is True
+        assert status["device_name"] == "Chrome na Windows"
+        assert status["extension_version"] == "0.1.0"
+        assert status["measured_lufs"] == -15.8
+        assert status["bass_reduction_db"] == 4.5
 
 
 def test_supabase_routes_use_rpc(tmp_path, monkeypatch):

@@ -1,8 +1,8 @@
-# PUB Jukebox 1.1
+# PUB Jukebox 1.2
 
 Webový jukebox pro bar. Host načte QR kód, vyhledá skladbu podle názvu na YouTube, přidá ji do společné fronty a může jednou hlasovat. Obsluha řídí pořadí a TV přehrává frontu automaticky.
 
-## Co verze 1.1 umí
+## Co verze 1.2 umí
 
 - hledání skladeb podle názvu a interpreta
 - záložní YouTube vyhledávání i bez API klíče
@@ -19,7 +19,8 @@ Webový jukebox pro bar. Host načte QR kód, vyhledá skladbu podle názvu na Y
 - pauza, pokračování, přeskočení a vzdálená hlasitost
 - ruční potvrzení přednosti za 5 Kč
 - noční limit celkové hlasitosti
-- konfigurační profil Night Bass Guard PRO: cílová hlasitost v LUFS, limiter a síla dynamické ochrany basů
+- Night Bass Guard PRO pro Windows a Chrome: automatické srovnání hlasitosti, dynamická ochrana basů pod 120 Hz a look-ahead limiter
+- živý stav Windows procesoru a míra zásahu přímo v administraci
 - instalace na plochu iPhonu jako webová aplikace
 - trvalá sdílená databáze Supabase (na Vercelu), lokálně SQLite
 
@@ -57,6 +58,16 @@ API klíč nikdy nevkládej do zdrojového kódu ani do veřejného GitHubu.
 
 Výchozí lokální PIN je `2673`. Pro ostré nasazení je povinné ho změnit přes proměnnou `ADMIN_PIN`.
 
+## Night Bass Guard PRO na barovém Windows počítači
+
+1. V administraci stáhni `night-bass-guard-windows.zip` a rozbal ho do stálé složky.
+2. V Google Chrome otevři `chrome://extensions`, zapni Režim pro vývojáře a zvol **Načíst rozbalené**.
+3. Vyber rozbalenou složku a připni rozšíření k liště Chromu.
+4. Otevři `/tv`, přihlas TV admin PINem a klikni jednou na ikonu Night Bass Guard.
+5. Zelené `ON` na ikoně a stav **PŘIPOJEN** v administraci potvrzují, že zvuk prochází procesorem.
+
+Modul zachytává pouze zvuk karty s TV přehrávačem. Třísekundový K-vážený odhad hlasitosti plynule dorovnává rozdíly mezi skladbami, dynamický filtr stáhne jen nadměrnou energii pod 120 Hz a limiter s šestimilisekundovým předstihem hlídá špičky. Nastavení se načítá z profilu provozovny každé čtyři sekundy.
+
 ## Konfigurace
 
 Viz `.env.example`. Nejdůležitější proměnné:
@@ -81,6 +92,7 @@ Viz `.env.example`. Nejdůležitější proměnné:
 ```bash
 python -m pip install -r requirements-dev.txt
 python -m pytest -q
+node tests/test_bass_guard_dsp.mjs
 ```
 
 ## Základ pro prodej dalším provozovnám
@@ -89,6 +101,6 @@ Profil provozovny je oddělený od zdrojového kódu pomocí `VENUE_KEY`. V data
 
 ## Důležité provozní omezení
 
-Webový YouTube přehrávač neumí kvůli oddělení zvuku z cizí domény měřit ani filtrovat audio signál. Noční limit proto pouze omezuje celkovou hlasitost. Administrace už ukládá profil **Night Bass Guard PRO**, ale skutečné vyrovnání hlasitosti, limiter a dynamická komprese pásma 20–120 Hz vyžadují místní audio procesor/DSP v cestě mezi počítačem a aparaturou. Dokud není procesor připojený, rozhraní ho pravdivě zobrazuje jako nepřipojený.
+Night Bass Guard je praktický adaptivní procesor pro provoz baru, ne certifikovaný měřicí přístroj EBU R128. Cílové LUFS proto představuje průběžný K-vážený odhad, který je vhodné doladit podle konkrétní aparatury a prostoru. Bez zapnutého Windows rozšíření zůstává zvuk YouTube beze změny a administrace pravdivě zobrazuje procesor jako nepřipojený.
 
 Veřejné přehrávání hudby a komerční použití musí provozovatel řešit v souladu s podmínkami YouTube a příslušnými hudebními licencemi. Automatická online platba za přednost není ve V1 zapojená; přednost potvrzuje obsluha po platbě u baru.

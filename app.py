@@ -112,6 +112,16 @@ def init_db() -> None:
                 revision INTEGER NOT NULL DEFAULT 0,
                 updated_at INTEGER NOT NULL DEFAULT 0
             );
+            CREATE TABLE IF NOT EXISTS audio_processors(
+                venue_key TEXT PRIMARY KEY,
+                device_name TEXT NOT NULL DEFAULT '',
+                extension_version TEXT NOT NULL DEFAULT '',
+                measured_lufs REAL,
+                gain_db REAL NOT NULL DEFAULT 0,
+                bass_reduction_db REAL NOT NULL DEFAULT 0,
+                limiter_reduction_db REAL NOT NULL DEFAULT 0,
+                last_seen INTEGER NOT NULL DEFAULT 0
+            );
             CREATE INDEX IF NOT EXISTS queue_active_idx
                 ON queue(status, priority DESC, votes DESC, id ASC);
             """
@@ -194,7 +204,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="PUB Jukebox", version="1.1.0", lifespan=lifespan)
+app = FastAPI(title="PUB Jukebox", version="1.2.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
@@ -234,6 +244,15 @@ class VenueSettingsUpdate(BaseModel):
     target_lufs: int = Field(default=-16, ge=-24, le=-8)
     limiter_ceiling_db: float = Field(default=-1.0, ge=-6.0, le=0.0)
     bass_guard_strength: int = Field(default=65, ge=0, le=100)
+
+
+class AudioProcessorHeartbeat(BaseModel):
+    device_name: str = Field(default="Windows Chrome", max_length=80)
+    extension_version: str = Field(default="", max_length=24)
+    measured_lufs: float | None = Field(default=None, ge=-100.0, le=12.0)
+    gain_db: float = Field(default=0.0, ge=-24.0, le=24.0)
+    bass_reduction_db: float = Field(default=0.0, ge=0.0, le=30.0)
+    limiter_reduction_db: float = Field(default=0.0, ge=0.0, le=30.0)
 
 
 def now() -> int:
@@ -331,6 +350,77 @@ def update_venue_settings(payload: VenueSettingsUpdate) -> dict:
         result["features"] = json.loads(result["features"])
     result["is_active"] = bool(result.get("is_active", True))
     return result
+
+
+def audio_processor_status() -> dict:
+    if USE_SUPABASE:
+        result = settings_rpc("processor_status")
+        if not isinstance(result, dict):
+            result = {}
+    else:
+        with connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM audio_processors WHERE venue_key=?", (VENUE_KEY,)
+            ).fetchone()
+        result = dict(row) if row else {}
+    last_seen = int(result.get("last_seen") or 0)
+    connected = last_seen > 0 and now() - last_seen <= 18
+    return {
+        "connected": connected,
+        "status": "Aktivní na Windows" if connected else "Čeká na Windows modul",
+        "device_name": result.get("device_name", ""),
+        "extension_version": result.get("extension_version", ""),
+        "measured_lufs": result.get("measured_lufs"),
+        "gain_db": float(result.get("gain_db") or 0),
+        "bass_reduction_db": float(result.get("bass_reduction_db") or 0),
+        "limiter_reduction_db": float(result.get("limiter_reduction_db") or 0),
+        "last_seen": last_seen,
+    }
+
+
+def record_audio_heartbeat(payload: AudioProcessorHeartbeat) -> dict:
+    values = {
+        "device_name": clean_text(payload.device_name, 80),
+        "extension_version": clean_text(payload.extension_version, 24),
+        "measured_lufs": payload.measured_lufs,
+        "gain_db": round(payload.gain_db, 2),
+        "bass_reduction_db": round(payload.bass_reduction_db, 2),
+        "limiter_reduction_db": round(payload.limiter_reduction_db, 2),
+    }
+    if USE_SUPABASE:
+        result = settings_rpc("processor_heartbeat", values)
+        if not isinstance(result, dict):
+            raise HTTPException(503, "Stav zvukového procesoru se nepodařilo uložit.")
+    else:
+        with connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO audio_processors(
+                    venue_key,device_name,extension_version,measured_lufs,gain_db,
+                    bass_reduction_db,limiter_reduction_db,last_seen
+                ) VALUES(?,?,?,?,?,?,?,?)
+                ON CONFLICT(venue_key) DO UPDATE SET
+                    device_name=excluded.device_name,
+                    extension_version=excluded.extension_version,
+                    measured_lufs=excluded.measured_lufs,
+                    gain_db=excluded.gain_db,
+                    bass_reduction_db=excluded.bass_reduction_db,
+                    limiter_reduction_db=excluded.limiter_reduction_db,
+                    last_seen=excluded.last_seen
+                """,
+                (
+                    VENUE_KEY,
+                    values["device_name"],
+                    values["extension_version"],
+                    values["measured_lufs"],
+                    values["gain_db"],
+                    values["bass_reduction_db"],
+                    values["limiter_reduction_db"],
+                    now(),
+                ),
+            )
+            conn.commit()
+    return audio_processor_status()
 
 
 def make_token(kind: str, subject: str) -> str:
@@ -550,6 +640,10 @@ def display_settings():
         "business_name": profile["business_name"],
         "tv_mode": profile["tv_mode"],
         "menu_text": profile.get("menu_text", ""),
+        "audio_mode": profile.get("audio_mode", "standard"),
+        "target_lufs": int(profile.get("target_lufs", -16)),
+        "limiter_ceiling_db": float(profile.get("limiter_ceiling_db", -1.0)),
+        "bass_guard_strength": int(profile.get("bass_guard_strength", 65)),
         "revision": profile.get("revision", 0),
     }
 
@@ -605,7 +699,7 @@ def admin_config(request: Request):
         "target_lufs": int(profile.get("target_lufs", -16)),
         "limiter_ceiling_db": float(profile.get("limiter_ceiling_db", -1.0)),
         "bass_guard_strength": int(profile.get("bass_guard_strength", 65)),
-        "audio_processor": {"connected": False, "status": "Čeká na místní zvukový modul"},
+        "audio_processor": audio_processor_status(),
         "join_url": join_url,
         "priority_price_czk": PRIORITY_PRICE_CZK,
         "night_volume": NIGHT_VOLUME,
@@ -618,6 +712,18 @@ def admin_config(request: Request):
 def save_display_settings(payload: VenueSettingsUpdate, request: Request):
     require_admin(request)
     return update_venue_settings(payload)
+
+
+@app.get("/api/admin/audio/status")
+def get_audio_processor_status(request: Request):
+    require_admin(request)
+    return audio_processor_status()
+
+
+@app.post("/api/admin/audio/heartbeat")
+def audio_processor_heartbeat(payload: AudioProcessorHeartbeat, request: Request):
+    require_admin(request)
+    return record_audio_heartbeat(payload)
 
 
 @app.get("/api/admin/qr.svg")

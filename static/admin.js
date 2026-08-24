@@ -130,9 +130,21 @@ function renderVenueSettings() {
   $("bassStrength").value = state.config.bass_guard_strength ?? 65;
   $("limiterCeiling").value = state.config.limiter_ceiling_db ?? -1;
   renderAudioValues();
+  renderAudioProcessor();
+}
+
+function renderAudioProcessor() {
   const processor = state.config.audio_processor || {};
   $("processorState").textContent = processor.connected ? "PŘIPOJEN" : "NEPŘIPOJEN";
   $("processorState").classList.toggle("connected", Boolean(processor.connected));
+  if (!processor.connected) {
+    $("processorMetrics").textContent = processor.status || "Na barovém počítači zatím neběží.";
+    return;
+  }
+  const lufs = processor.measured_lufs == null ? "měřím" : `${Number(processor.measured_lufs).toFixed(1)} LUFS`;
+  const bass = Number(processor.bass_reduction_db || 0).toFixed(1);
+  const limiter = Number(processor.limiter_reduction_db || 0).toFixed(1);
+  $("processorMetrics").textContent = `${processor.device_name || "Windows"} · ${lufs} · basy −${bass} dB · limiter −${limiter} dB`;
 }
 
 function renderAudioValues() {
@@ -173,16 +185,19 @@ async function saveVenueSettings(event) {
 
 async function loadAll(silent = false) {
   try {
-    const [config, queue, player] = await Promise.all([
-      state.config ? Promise.resolve(state.config) : api("/api/admin/config"),
+    const firstLoad = !state.config;
+    const [config, queue, player, audioProcessor] = await Promise.all([
+      firstLoad ? api("/api/admin/config") : Promise.resolve(state.config),
       api("/api/queue"),
       api("/api/player/state"),
+      firstLoad ? Promise.resolve(null) : api("/api/admin/audio/status"),
     ]);
-    state.config = config;
+    state.config = audioProcessor ? { ...config, audio_processor: audioProcessor } : config;
     state.queue = queue;
     state.player = player;
     $("brandName").textContent = config.bar_name;
-    renderVenueSettings();
+    if (firstLoad) renderVenueSettings();
+    else renderAudioProcessor();
     $("joinUrl").textContent = config.join_url;
     if (!state.configLoaded) {
       $("qr").src = `/api/admin/qr.svg?t=${Date.now()}`;
