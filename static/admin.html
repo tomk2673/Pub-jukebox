@@ -2,23 +2,85 @@
 <html lang="cs">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#090b0f">
   <link rel="stylesheet" href="/static/common.css">
-  <title>Admin</title>
+  <title>Správa · PUB Jukebox</title>
 </head>
 <body>
-<div class="wrap">
-  <h1>Admin</h1>
-  <input id="pin" type="password" placeholder="PIN"><button onclick="next()">Další</button>
-  <div id="queue"></div>
-</div>
-<script>
-const h=()=>({ 'x-admin-pin':pin.value });
-async function next(){await fetch('/api/next',{method:'POST',headers:h()});load()}
-async function act(id, a){await fetch('/api/queue/'+id+'/'+a,{method:'POST',headers:h()});load()}
-async function del(id){await fetch('/api/queue/'+id,{method:'DELETE',headers:h()});load()}
-async function load(){let a=await (await fetch('/api/queue')).json();queue.innerHTML=a.map(s=>`<div class="card"><b>${s.title}</b><div>${s.priority} • ${s.votes} hlasů</div><button onclick="act('${s.id}','play')">Hrát</button> <button onclick="act('${s.id}','priority')">Priorita</button> <button onclick="del('${s.id}')">Smazat</button></div>`).join('')}
-setInterval(load,1500);load();
-</script>
+  <section class="login-shell" id="loginView">
+    <div class="panel login-card">
+      <div class="brand-mark">▶</div>
+      <div class="eyebrow">OBSLUHA</div>
+      <h1>Ovládání jukeboxu</h1>
+      <p class="muted">Zadej PIN. Přihlášení zůstane aktivní 12 hodin.</p>
+      <form id="loginForm">
+        <input id="pin" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Admin PIN" required>
+        <button class="btn" type="submit">Odemknout</button>
+      </form>
+      <div class="status" id="loginStatus" role="status"></div>
+    </div>
+  </section>
+
+  <main class="shell hidden" id="adminView">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">▶</div>
+        <div>
+          <div class="eyebrow">ADMIN</div>
+          <div class="brand-name" id="brandName">PUB JUKEBOX</div>
+        </div>
+      </div>
+      <button class="btn secondary compact" id="logoutButton" type="button">Odhlásit</button>
+    </header>
+
+    <div class="admin-grid">
+      <aside class="panel sticky">
+        <div class="eyebrow">QR PRO HOSTY</div>
+        <h2>Přidat skladbu</h2>
+        <img class="qr" id="qr" src="/api/admin/qr.svg" alt="QR kód pro připojení hosta">
+        <div class="url-box" id="joinUrl"></div>
+        <div class="controls">
+          <button class="btn secondary compact" id="copyButton" type="button">Kopírovat odkaz</button>
+          <a class="btn secondary compact" href="/tv" target="_blank">Otevřít TV</a>
+        </div>
+        <p class="small muted" id="searchProvider"></p>
+        <div class="warning hidden" id="secretsWarning">Před ostrým provozem změň výchozí PIN a tajný klíč v nastavení hostingu.</div>
+      </aside>
+
+      <section>
+        <article class="panel">
+          <div class="eyebrow">PŘEHRÁVAČ</div>
+          <h2 id="nowTitle">Nic nehraje</h2>
+          <p class="muted" id="nowArtist">TV čeká na první skladbu.</p>
+          <div class="controls">
+            <button class="btn" id="startButton" type="button">▶ Spustit</button>
+            <button class="btn secondary" id="pauseButton" type="button">Pauza</button>
+            <button class="btn secondary" id="resumeButton" type="button">Pokračovat</button>
+            <button class="btn secondary" id="nextButton" type="button">Další ›</button>
+          </div>
+          <div class="control-row">
+            <span class="small">Hlasitost</span>
+            <input id="volume" type="range" min="0" max="100" value="80">
+            <strong id="volumeValue">80 %</strong>
+          </div>
+          <div class="controls">
+            <button class="btn secondary compact" id="nightButton" type="button">Noční limit vypnutý</button>
+          </div>
+          <div class="status" id="adminStatus" role="status"></div>
+        </article>
+
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">ŘÍZENÍ POŘADÍ</div>
+            <h2>Fronta</h2>
+          </div>
+          <span class="muted small" id="queueCount">0 skladeb</span>
+        </div>
+        <div id="queue"></div>
+      </section>
+    </div>
+  </main>
+  <script src="/static/admin.js" defer></script>
 </body>
 </html>

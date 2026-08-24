@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: pub-jukebox
+    runtime: docker
+    plan: starter
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: BAR_NAME
+        value: PUB JUKEBOX
+      - key: ADMIN_PIN
+        sync: false
+      - key: JOIN_CODE
+        generateValue: true
+      - key: SECRET_KEY
+        generateValue: true
+      - key: JUKEBOX_DB
+        value: /var/data/jukebox.db
+      - key: PRIORITY_PRICE_CZK
+        value: "5"
+      - key: NIGHT_VOLUME
+        value: "55"
+    disk:
+      name: jukebox-data
+      mountPath: /var/data
+      sizeGB: 1

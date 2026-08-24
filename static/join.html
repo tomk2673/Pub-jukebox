@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#090b0f">
+  <link rel="stylesheet" href="/static/common.css">
+  <title>Připojit · PUB Jukebox</title>
+</head>
+<body>
+  <section class="login-shell">
+    <div class="panel login-card">
+      <div class="brand-mark">▶</div>
+      <div class="eyebrow">PUB JUKEBOX</div>
+      <h1>Připoj se k hudbě</h1>
+      <p class="muted">Nejrychlejší je naskenovat QR kód na obrazovce v baru. Případně zadej kód ručně.</p>
+      <form id="joinForm">
+        <input class="join-code" id="code" autocomplete="off" autocapitalize="none" placeholder="Kód podniku" required>
+        <button class="btn" type="submit">Vstoupit</button>
+      </form>
+      <div class="status" id="joinStatus"></div>
+    </div>
+  </section>
+  <script src="/static/join.js" defer></script>
+</body>
+</html>

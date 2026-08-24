@@ -1,0 +1,9 @@
+{
+  "name": "PUB Jukebox",
+  "short_name": "Jukebox",
+  "description": "Společná hudební fronta pro hosty baru",
+  "start_url": "/guest",
+  "display": "standalone",
+  "background_color": "#090b0f",
+  "theme_color": "#090b0f"
+}

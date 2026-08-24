@@ -2,20 +2,65 @@
 <html lang="cs">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#090b0f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="/static/manifest.webmanifest">
   <link rel="stylesheet" href="/static/common.css">
-  <title>Fronta</title>
+  <title>PUB Jukebox</title>
 </head>
 <body>
-<div class="wrap">
-  <h1>Co hraje právě?</h1>
-  <p>Zde může host vidět aktuální frontu a hlasovat.</p>
-  <div id="queue"></div>
-</div>
-<script>
-async function vote(id){await fetch('/api/queue/'+id+'/vote',{method:'POST'});load()}
-async function load(){let a=await (await fetch('/api/queue')).json();queue.innerHTML=a.map(s=>`<div class="card"><b>${s.title}</b><div class="small">${s.status}</div><button onclick="vote('${s.id}')">▲</button></div>`).join('')}
-setInterval(load,1500);load();
-</script>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">▶</div>
+        <div>
+          <div class="eyebrow">LIVE V BARU</div>
+          <div class="brand-name" id="brandName">PUB JUKEBOX</div>
+        </div>
+      </div>
+      <span class="small muted" id="connection">připojuji…</span>
+    </header>
+
+    <section class="hero">
+      <article class="panel now-panel" id="nowPanel">
+        <div class="now-content">
+          <span class="eyebrow">PRÁVĚ HRAJE</span>
+          <h1 class="now-title" id="nowTitle">Hudba čeká na první volbu</h1>
+          <div class="now-artist" id="nowArtist">Najdi skladbu a pošli ji do fronty.</div>
+        </div>
+      </article>
+      <article class="panel stat-panel">
+        <div>
+          <div class="eyebrow">SKLADEB PŘED TEBOU</div>
+          <div class="big-number" id="queueCount">0</div>
+        </div>
+        <p class="muted small">Hlasuj pro skladbu, kterou chceš dostat výš. Každý telefon má jeden hlas.</p>
+      </article>
+    </section>
+
+    <section class="panel search-panel">
+      <div class="eyebrow">VYBER DALŠÍ TRACK</div>
+      <h2>Najdi skladbu na YouTube</h2>
+      <form class="search-row" id="searchForm">
+        <input id="searchInput" autocomplete="off" enterkeyhint="search" maxlength="100" placeholder="Interpret nebo název skladby" required>
+        <button class="btn" type="submit" id="searchButton">Hledat</button>
+      </form>
+      <div class="status" id="searchStatus" role="status"></div>
+      <div class="results" id="results"></div>
+    </section>
+
+    <div class="section-head">
+      <div>
+        <div class="eyebrow">SPOLEČNÁ VOLBA</div>
+        <h2>Fronta</h2>
+      </div>
+      <button class="btn secondary compact" id="refreshButton" type="button">Obnovit</button>
+    </div>
+    <section id="queue" aria-live="polite"></section>
+    <p class="footer-note">Přehrávání zajišťuje YouTube. Dostupnost některých videí určuje jejich vlastník.</p>
+  </main>
+  <script src="/static/guest.js" defer></script>
 </body>
 </html>
