@@ -121,6 +121,11 @@ h2 { margin-bottom: 16px; font-size: clamp(23px, 4vw, 34px); letter-spacing: -0.
 
 .search-panel { margin-bottom: 18px; }
 .search-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+.search-kind { display: inline-grid; grid-template-columns: repeat(2,auto); gap: 6px; margin: 0 0 12px; padding: 4px; border: 1px solid var(--line); border-radius: 12px; }
+.search-kind label { cursor: pointer; }
+.search-kind input { position: absolute; opacity: 0; pointer-events: none; }
+.search-kind span { display: block; padding: 8px 12px; border-radius: 8px; color: var(--muted); font-size: 12px; font-weight: 850; }
+.search-kind input:checked + span { color: #111; background: var(--amber); }
 
 input {
   width: 100%;
@@ -257,6 +262,14 @@ input[type="range"] { min-height: 28px; padding: 0; accent-color: var(--amber); 
 .transition-control { margin: 10px 0 16px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: rgba(0,0,0,.13); }
 .transition-control label { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
 .transition-control input { grid-column: 1 / -1; width: 100%; }
+.autodj-panel { margin: 10px 0 18px; padding: 14px; border: 1px solid var(--line); border-radius: 16px; background: rgba(0,0,0,.13); }
+.switch-line { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+.switch-line > input { width: 22px; min-height: 22px; margin: 0; accent-color: var(--amber); }
+.switch-line span, .playlist-picker span { display: grid; gap: 2px; }
+.switch-line small, .playlist-picker small { color: var(--muted); }
+.playlist-picker { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin: 14px 0; }
+.playlist-picker label { display: flex; align-items: start; gap: 9px; padding: 11px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; }
+.playlist-picker input { width: 18px; min-height: 18px; margin: 2px 0 0; accent-color: var(--cyan); }
 .network-card { margin-top: 16px; padding: 13px; border: 1px solid var(--line); border-radius: 14px; background: rgba(0,0,0,.14); }
 .network-card strong { display: block; margin: 4px 0 6px; }
 .network-card p { margin: 0 0 10px; line-height: 1.45; word-break: break-word; }
@@ -285,6 +298,7 @@ input[type="range"] { min-height: 28px; padding: 0; accent-color: var(--amber); 
   .mode-picker { grid-template-columns: 1fr; }
   .mode-option span { min-height: 68px; }
   .audio-controls { grid-template-columns: 1fr; }
+  .playlist-picker { grid-template-columns: 1fr; }
   .processor-detail { align-items: stretch; flex-direction: column; }
 }
 

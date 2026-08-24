@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 VIDEO_A = "dQw4w9WgXcQ"
 VIDEO_B = "9bZkp7q19f0"
+VIDEO_C = "M7lc1UVf-VE"
 
 
 def make_client(tmp_path, monkeypatch):
@@ -99,6 +100,8 @@ def test_tv_player_blocks_customer_youtube_controls(tmp_path, monkeypatch):
         style = client.get("/static/tv.css")
         assert tv.status_code == 200
         assert 'class="player-guard"' in tv.text
+        assert 'class="tv-qr"' in tv.text
+        assert "VYBER DALŠÍ SKLADBU" in tv.text
         assert "disablekb: 1" in script.text
         assert "fs: 0" in script.text
         assert "pointer-events: none" in style.text
@@ -130,6 +133,9 @@ def test_admin_manages_venue_tv_and_audio_profile(tmp_path, monkeypatch):
                 "menu_text": "PIVO\nRadegast 10 | 49 Kč\nGin & tonic | 115 Kč",
                 "transition_mode": "scratch",
                 "transition_volume": 62,
+                "autodj_enabled": True,
+                "autodj_playlists": ["cz_funk", "karaoke"],
+                "autodj_custom_queries": "rock 80. let\nslovenské hity",
                 "audio_mode": "bass_guard",
                 "target_lufs": -15,
                 "limiter_ceiling_db": -1.5,
@@ -146,6 +152,9 @@ def test_admin_manages_venue_tv_and_audio_profile(tmp_path, monkeypatch):
         assert "Radegast 10 | 49 Kč" in display["menu_text"]
         assert display["transition_mode"] == "scratch"
         assert display["transition_volume"] == 62
+        assert display["autodj_enabled"] is True
+        assert display["autodj_playlists"] == ["cz_funk", "karaoke"]
+        assert "slovenské hity" in display["autodj_custom_queries"]
         assert display["audio_mode"] == "bass_guard"
         assert display["target_lufs"] == -15
         assert client.get("/api/config").json()["bar_name"] == "Ztracený bar"
@@ -157,6 +166,7 @@ def test_admin_manages_venue_tv_and_audio_profile(tmp_path, monkeypatch):
         assert config["bass_guard_strength"] == 72
         assert config["transition_mode"] == "scratch"
         assert config["transition_volume"] == 62
+        assert config["autodj_playlists"] == ["cz_funk", "karaoke"]
         assert config["audio_processor"]["connected"] is False
 
         invalid = client.put(
@@ -164,6 +174,53 @@ def test_admin_manages_venue_tv_and_audio_profile(tmp_path, monkeypatch):
             json={"business_name": "Bar", "tv_mode": "invalid", "menu_text": ""},
         )
         assert invalid.status_code == 422
+
+
+def test_autodj_prepares_filler_but_guest_queue_stays_first(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        jukebox,
+        "fallback_youtube_search",
+        lambda query, limit: [
+            {"video_id": VIDEO_B, "title": "Auto funk", "artist": "AutoDJ", "thumbnail": ""}
+        ],
+    )
+    with make_client(tmp_path, monkeypatch) as client:
+        join(client)
+        first = add(client, VIDEO_A, "Guest first").json()
+        second = add(client, VIDEO_C, "Guest next").json()
+        login(client)
+        assert client.post("/api/player/start").json()["song"]["id"] == first["id"]
+
+        prepared = client.post("/api/player/autodj/prepare")
+        assert prepared.status_code == 200
+        assert prepared.json()["prepared"] is True
+        assert prepared.json()["song"]["video_id"] == VIDEO_B
+
+        queue = client.get("/api/queue").json()
+        queued = [song for song in queue if song["status"] == "queued"]
+        assert [song["id"] for song in queued] == [second["id"], prepared.json()["song"]["id"]]
+        assert queued[-1]["priority"] == -100
+        assert queued[-1]["requested_by"].startswith("AutoDJ")
+        assert client.post(f"/api/queue/{queued[-1]['id']}/vote").status_code == 409
+
+        assert client.post("/api/player/ended").json()["song"]["id"] == second["id"]
+        assert client.post("/api/player/ended").json()["song"]["video_id"] == VIDEO_B
+
+
+def test_karaoke_search_adds_karaoke_intent(tmp_path, monkeypatch):
+    queries = []
+
+    def fake_search(query, limit):
+        queries.append(query)
+        return [{"video_id": VIDEO_A, "title": "Karaoke", "artist": "Test", "thumbnail": ""}]
+
+    monkeypatch.setattr(jukebox, "fallback_youtube_search", fake_search)
+    with make_client(tmp_path, monkeypatch) as client:
+        join(client)
+        response = client.get("/api/search?q=Zagorova&mode=karaoke")
+        assert response.status_code == 200
+        assert response.json()["mode"] == "karaoke"
+        assert "karaoke instrumental s textem" in queries[0]
 
 
 def test_windows_audio_processor_heartbeat(tmp_path, monkeypatch):

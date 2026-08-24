@@ -61,7 +61,7 @@ function renderQueue() {
   root.replaceChildren();
   const playing = state.queue.find((song) => song.status === "playing");
   const queued = state.queue.filter((song) => song.status === "queued");
-  $("queueCount").textContent = String(queued.length);
+  $("queueCount").textContent = String(queued.filter((song) => !isAutoDj(song)).length);
   if (playing) {
     $("nowTitle").textContent = playing.title;
     $("nowArtist").textContent = playing.artist || "YouTube";
@@ -83,10 +83,16 @@ function renderQueue() {
     card.className = "song-card";
     const position = document.createElement("div");
     position.className = "position";
-    position.textContent = `#${index + 1}`;
+    const automatic = isAutoDj(song);
+    position.textContent = automatic ? "AUTO" : `#${index + 1}`;
     const actions = document.createElement("div");
     actions.className = "song-actions";
-    if (song.priority > 0) {
+    if (automatic) {
+      const auto = document.createElement("span");
+      auto.className = "priority small";
+      auto.textContent = "zásoba · tvoje volba ji předběhne";
+      actions.append(auto);
+    } else if (song.priority > 0) {
       const priority = document.createElement("span");
       priority.className = "priority small";
       priority.textContent = "⚡ přednost";
@@ -104,16 +110,22 @@ function renderQueue() {
       priorityButton.addEventListener("click", () => requestPriority(song.id, priorityButton));
       actions.append(priorityButton);
     }
-    const vote = document.createElement("button");
-    vote.className = `btn compact ${song.voted_by_me ? "secondary" : "cyan"}`;
-    vote.type = "button";
-    vote.disabled = Boolean(song.voted_by_me);
-    vote.textContent = song.voted_by_me ? `✓ ${song.votes}` : `▲ ${song.votes}`;
-    vote.addEventListener("click", () => voteSong(song.id, vote));
-    actions.append(vote);
+    if (!automatic) {
+      const vote = document.createElement("button");
+      vote.className = `btn compact ${song.voted_by_me ? "secondary" : "cyan"}`;
+      vote.type = "button";
+      vote.disabled = Boolean(song.voted_by_me);
+      vote.textContent = song.voted_by_me ? `✓ ${song.votes}` : `▲ ${song.votes}`;
+      vote.addEventListener("click", () => voteSong(song.id, vote));
+      actions.append(vote);
+    }
     card.append(position, songCopy(song), actions);
     root.append(card);
   });
+}
+
+function isAutoDj(song) {
+  return Boolean(song.is_autodj) || String(song.requested_by || "").startsWith("AutoDJ");
 }
 
 async function loadQueue(silent = false) {
@@ -138,11 +150,12 @@ async function search(event) {
   $("results").replaceChildren();
   try {
     const looksLikeUrl = /youtu(?:\.be|be\.com)/i.test(query);
+    const mode = document.querySelector('input[name="searchMode"]:checked')?.value || "music";
     const data = looksLikeUrl
       ? { items: [await api(`/api/videos/resolve?url=${encodeURIComponent(query)}`)] }
-      : await api(`/api/search?q=${encodeURIComponent(query)}&limit=8`);
+      : await api(`/api/search?q=${encodeURIComponent(query)}&limit=8&mode=${mode}`);
     renderResults(data.items);
-    setStatus(`${data.items.length} výsledků`, "success");
+    setStatus(`${data.items.length} výsledků${mode === "karaoke" ? " pro karaoke" : ""}`, "success");
   } catch (error) {
     setStatus(error.message, "error");
   } finally {

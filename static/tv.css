@@ -83,9 +83,10 @@ body { color: #fff; }
 .overlay { position: fixed; z-index: 10; right: 0; bottom: 0; left: 0; display: flex; align-items: end; justify-content: space-between; gap: 30px; padding: 70px 4vw 3vw; background: linear-gradient(transparent,rgba(0,0,0,.94)); pointer-events: none; transition: left 300ms ease, padding 300ms ease; }
 .overlay strong { display: block; max-width: 72vw; margin: 7px 0 4px; overflow: hidden; font-size: clamp(28px,4vw,58px); letter-spacing: -.04em; text-overflow: ellipsis; white-space: nowrap; }
 .overlay small { color: #c5c9ce; font-size: clamp(15px,1.7vw,23px); }
-.qr-lockup { display: grid; justify-items: center; gap: 7px; }
-.qr-lockup small { max-width: 170px; overflow: hidden; color: var(--amber); font-size: 10px; font-weight: 900; letter-spacing: .1em; text-overflow: ellipsis; white-space: nowrap; }
-.overlay img { width: clamp(90px,11vw,165px); padding: 7px; border-radius: 13px; background: #fff; }
+.tv-qr { position: fixed; z-index: 14; top: 50%; right: 3vw; display: grid; justify-items: center; gap: 6px; padding: 10px; border: 1px solid rgba(255,255,255,.18); border-radius: 16px; background: rgba(5,7,11,.88); box-shadow: 0 16px 45px rgba(0,0,0,.45); transform: translateY(-50%); pointer-events: none; }
+.tv-qr small { color: var(--amber); font-size: clamp(8px,.7vw,11px); font-weight: 950; letter-spacing: .1em; }
+.tv-qr strong { max-width: 170px; overflow: hidden; color: #fff; font-size: 9px; letter-spacing: .08em; text-overflow: ellipsis; white-space: nowrap; }
+.tv-qr img { width: clamp(82px,8.5vw,138px); padding: 6px; border-radius: 11px; background: #fff; }
 
 body[data-mode="dj"] .player-shell,
 body[data-mode="menu"] .player-shell { inset: auto 3vw 3vw auto; z-index: 6; width: min(29vw, 480px); height: min(30vh, 285px); border: 2px solid rgba(255,255,255,.14); border-radius: 20px; box-shadow: 0 22px 65px rgba(0,0,0,.48); }
@@ -93,8 +94,6 @@ body[data-mode="dj"] .overlay,
 body[data-mode="menu"] .overlay { right: auto; width: 70vw; padding: 48px 4vw 3vw; background: linear-gradient(transparent,rgba(0,0,0,.78)); }
 body[data-mode="dj"] .overlay strong,
 body[data-mode="menu"] .overlay strong { max-width: 54vw; font-size: clamp(21px,2.6vw,39px); }
-body[data-mode="dj"] .qr-lockup,
-body[data-mode="menu"] .qr-lockup { display: none; }
 body[data-mode="dj"]:not(.has-song) .player-shell,
 body[data-mode="menu"]:not(.has-song) .player-shell { opacity: 0; pointer-events: none; }
 

@@ -43,6 +43,10 @@
     <section class="panel search-panel">
       <div class="eyebrow">VYBER DALŠÍ TRACK</div>
       <h2>Najdi skladbu na YouTube</h2>
+      <div class="search-kind" role="radiogroup" aria-label="Typ vystoupení">
+        <label><input type="radio" name="searchMode" value="music" checked><span>♫ Hudba</span></label>
+        <label><input type="radio" name="searchMode" value="karaoke"><span>🎤 Karaoke</span></label>
+      </div>
       <form class="search-row" id="searchForm">
         <input id="searchInput" autocomplete="off" enterkeyhint="search" maxlength="100" placeholder="Interpret nebo název skladby" required>
         <button class="btn" type="submit" id="searchButton">Hledat</button>

@@ -16,6 +16,9 @@ let transitionAudio = null;
 let transitioning = false;
 let transitionBag = [];
 let lastTransitionId = null;
+let autoDjEnabled = true;
+let autoDjBusy = false;
+let nextAutoDjAttempt = 0;
 
 const TRANSITION_VARIANTS = Object.freeze([
   Object.freeze({ id: "backspin", label: "DJ BACKSPIN", duration: 0.92 }),
@@ -250,6 +253,7 @@ function applyDisplay(display) {
   displayMode = ["clip", "dj", "menu"].includes(display.tv_mode) ? display.tv_mode : "clip";
   transitionMode = display.transition_mode === "none" ? "none" : "scratch";
   transitionVolume = Math.min(100, Math.max(0, Number(display.transition_volume ?? 55)));
+  autoDjEnabled = display.autodj_enabled !== false;
   const brand = display.business_name || "PUB JUKEBOX";
   document.body.dataset.mode = displayMode;
   document.title = `${brand} · TV`;
@@ -262,6 +266,23 @@ function applyDisplay(display) {
   if (display.revision !== displayRevision) {
     renderMenu(display.menu_text);
     displayRevision = display.revision;
+  }
+}
+
+async function ensureAutoDjBuffer(state) {
+  if (!autoDjEnabled || autoDjBusy || Date.now() < nextAutoDjAttempt) return;
+  autoDjBusy = true;
+  nextAutoDjAttempt = Date.now() + 30000;
+  try {
+    const result = await api("/api/player/autodj/prepare", { method: "POST" });
+    if (result.prepared && !state.now_playing) {
+      await api("/api/player/start", { method: "POST" });
+      setTimeout(() => sync(true), 250);
+    }
+  } catch (_) {
+    // AutoDJ zkusí doplnit zásobník při další periodické kontrole.
+  } finally {
+    autoDjBusy = false;
   }
 }
 
@@ -317,6 +338,7 @@ async function sync(force = false) {
     const [state, display] = await Promise.all([api("/api/player/state"), api("/api/display")]);
     applyDisplay(display);
     await applyState(state, force);
+    ensureAutoDjBuffer(state);
   } catch (error) {
     if (error.status === 401) {
       authenticated = false;

@@ -102,6 +102,21 @@
               <label>Hlasitost přechodu <strong id="transitionVolumeValue">55 %</strong><input id="transitionVolume" type="range" min="0" max="100" value="55"></label>
             </div>
 
+            <div class="field-label">AutoDJ zásobník</div>
+            <div class="autodj-panel">
+              <label class="switch-line"><input id="autodjEnabled" type="checkbox" checked><span><strong>Automaticky navázat při prázdné frontě</strong><small>Hostem vybraná skladba má vždy přednost.</small></span></label>
+              <div id="autodjControls">
+                <div class="playlist-picker">
+                  <label><input type="checkbox" name="autodjPlaylist" value="cz_funk" checked><span>Český funk<small>J.A.R., Monkey Business, Roman Holý…</small></span></label>
+                  <label><input type="checkbox" name="autodjPlaylist" value="cz_oldies" checked><span>České oldies<small>Zagorová, Gott, Rottrová, Olympic…</small></span></label>
+                  <label><input type="checkbox" name="autodjPlaylist" value="cz_hiphop" checked><span>Český hip-hop 90/00<small>PSH, Indy &amp; Wich, Chaozz…</small></span></label>
+                  <label><input type="checkbox" name="autodjPlaylist" value="karaoke"><span>Karaoke hity<small>České hity s textem a instrumentálem</small></span></label>
+                </div>
+                <label class="field-label" for="autodjCustomQueries">Vlastní playlistová témata</label>
+                <textarea id="autodjCustomQueries" rows="3" maxlength="1000" placeholder="Každé téma na nový řádek, např.:&#10;rock 80. let&#10;slovenské taneční hity"></textarea>
+              </div>
+            </div>
+
             <label class="field-label" for="menuText">Nápojová nabídka</label>
             <textarea id="menuText" rows="7" maxlength="4000" placeholder="Každou položku napiš na nový řádek:&#10;Radegast rázná 10 | 45 Kč&#10;Gin &amp; tonic | 115 Kč&#10;&#10;Samostatný řádek bez ceny vytvoří nadpis sekce."></textarea>
 

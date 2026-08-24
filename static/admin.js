@@ -62,7 +62,9 @@ function renderQueue() {
   const root = $("queue");
   root.replaceChildren();
   const queued = state.queue.filter((song) => song.status === "queued");
-  $("queueCount").textContent = `${queued.length} skladeb`;
+  const guestQueued = queued.filter((song) => !isAutoDj(song));
+  const autoReady = queued.some(isAutoDj);
+  $("queueCount").textContent = `${guestQueued.length} od hostů${autoReady ? " · AutoDJ připraven" : ""}`;
   if (!queued.length) {
     root.append(textBlock("empty", "Fronta je prázdná."));
     return;
@@ -77,23 +79,30 @@ function renderQueue() {
     img.src = song.thumbnail || `https://i.ytimg.com/vi/${song.video_id}/mqdefault.jpg`;
     const copy = document.createElement("div");
     copy.className = "song-copy";
+    const automatic = isAutoDj(song);
     copy.append(
-      textBlock("song-title", `${index + 1}. ${song.title}`),
-      textBlock("song-meta", `${song.artist || "YouTube"} · ${song.votes} hlasů${song.priority ? " · přednost" : ""}${song.priority_requested ? " · čeká na platbu" : ""}`),
+      textBlock("song-title", `${automatic ? "AUTO" : index + 1}. ${song.title}`),
+      textBlock("song-meta", automatic ? `${song.artist || "YouTube"} · ${song.requested_by}` : `${song.artist || "YouTube"} · ${song.votes} hlasů${song.priority ? " · přednost" : ""}${song.priority_requested ? " · čeká na platbu" : ""}`),
     );
     const actions = document.createElement("div");
     actions.className = "song-actions";
     const play = actionButton("Hrát", "btn compact", () => queueAction(song.id, "play"));
-    const priority = actionButton(
+    const priority = automatic ? null : actionButton(
       song.priority_requested ? `Potvrdit ${state.config.priority_price_czk} Kč` : `⚡ ${state.config.priority_price_czk} Kč`,
       song.priority_requested ? "btn compact" : "btn secondary compact",
       () => queueAction(song.id, "priority"),
     );
     const remove = actionButton("Smazat", "btn danger compact", () => removeSong(song.id));
-    actions.append(play, priority, remove);
+    actions.append(play);
+    if (priority) actions.append(priority);
+    actions.append(remove);
     card.append(img, copy, actions);
     root.append(card);
   });
+}
+
+function isAutoDj(song) {
+  return Boolean(song.is_autodj) || String(song.requested_by || "").startsWith("AutoDJ");
 }
 
 function actionButton(label, className, handler) {
@@ -129,13 +138,24 @@ function renderVenueSettings() {
   const transitionMode = document.querySelector(`input[name="transitionMode"][value="${state.config.transition_mode || "scratch"}"]`);
   if (transitionMode) transitionMode.checked = true;
   $("transitionVolume").value = state.config.transition_volume ?? 55;
+  $("autodjEnabled").checked = state.config.autodj_enabled !== false;
+  $("autodjCustomQueries").value = state.config.autodj_custom_queries || "";
+  const playlists = new Set(state.config.autodj_playlists || ["cz_funk", "cz_oldies", "cz_hiphop"]);
+  for (const input of document.querySelectorAll('input[name="autodjPlaylist"]')) input.checked = playlists.has(input.value);
   $("targetLufs").value = state.config.target_lufs ?? -16;
   $("bassStrength").value = state.config.bass_guard_strength ?? 65;
   $("limiterCeiling").value = state.config.limiter_ceiling_db ?? -1;
   renderAudioValues();
   renderTransitionValues();
+  renderAutoDjValues();
   renderAudioProcessor();
   renderNetworkLock();
+}
+
+function renderAutoDjValues() {
+  const enabled = $("autodjEnabled").checked;
+  $("autodjControls").classList.toggle("disabled-controls", !enabled);
+  for (const input of $("autodjControls").querySelectorAll("input,textarea")) input.disabled = !enabled;
 }
 
 function renderTransitionValues() {
@@ -209,6 +229,9 @@ async function saveVenueSettings(event) {
         menu_text: $("menuText").value,
         transition_mode: selectedTransitionMode?.value || "scratch",
         transition_volume: Number($("transitionVolume").value),
+        autodj_enabled: $("autodjEnabled").checked,
+        autodj_playlists: [...document.querySelectorAll('input[name="autodjPlaylist"]:checked')].map((input) => input.value),
+        autodj_custom_queries: $("autodjCustomQueries").value,
         audio_mode: selectedAudioMode?.value || "standard",
         target_lufs: Number($("targetLufs").value),
         limiter_ceiling_db: Number($("limiterCeiling").value),
@@ -290,6 +313,7 @@ function wireEvents() {
   for (const input of document.querySelectorAll('input[name="audioMode"]')) input.addEventListener("change", renderAudioValues);
   for (const input of document.querySelectorAll('input[name="transitionMode"]')) input.addEventListener("change", renderTransitionValues);
   $("transitionVolume").addEventListener("input", renderTransitionValues);
+  $("autodjEnabled").addEventListener("change", renderAutoDjValues);
   for (const id of ["targetLufs", "bassStrength", "limiterCeiling"]) $(id).addEventListener("input", renderAudioValues);
   $("startButton").addEventListener("click", () => playerAction("/api/player/start", "Přehrávač spuštěn."));
   $("nextButton").addEventListener("click", () => playerAction("/api/player/next", "Přeskakuji na další skladbu."));

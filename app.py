@@ -52,6 +52,41 @@ SEARCH_LOCK = threading.Lock()
 LOGIN_FAILURES: dict[str, list[float]] = {}
 SEARCH_ACTIVITY: dict[str, list[float]] = {}
 NETWORK_CACHE: dict[str, float | str] = {"expires": 0.0, "allowed": ""}
+AUTO_DJ_PLAYLISTS = {
+    "cz_funk": {
+        "label": "Český funk",
+        "queries": [
+            "J.A.R. český funk official",
+            "Monkey Business CZ official",
+            "Roman Holý Sexy Dancers official",
+        ],
+    },
+    "cz_oldies": {
+        "label": "České oldies",
+        "queries": [
+            "Hana Zagorová hity official",
+            "Karel Gott hity official",
+            "Marie Rottrová Olympic české hity official",
+        ],
+    },
+    "cz_hiphop": {
+        "label": "Český hip-hop 90/00",
+        "queries": [
+            "PSH starý český hip hop official",
+            "Indy Wich český hip hop official",
+            "Chaozz český hip hop official",
+        ],
+    },
+    "karaoke": {
+        "label": "Karaoke hity",
+        "queries": [
+            "české karaoke hity s textem",
+            "Karel Gott karaoke s textem",
+            "Hana Zagorová karaoke s textem",
+        ],
+    },
+}
+DEFAULT_AUTO_DJ_PLAYLISTS = ["cz_funk", "cz_oldies", "cz_hiphop"]
 
 
 def connection() -> sqlite3.Connection:
@@ -106,6 +141,9 @@ def init_db() -> None:
                 menu_text TEXT NOT NULL DEFAULT '',
                 transition_mode TEXT NOT NULL DEFAULT 'scratch' CHECK(transition_mode IN ('none','scratch')),
                 transition_volume INTEGER NOT NULL DEFAULT 55,
+                autodj_enabled INTEGER NOT NULL DEFAULT 1,
+                autodj_playlists TEXT NOT NULL DEFAULT '["cz_funk","cz_oldies","cz_hiphop"]',
+                autodj_custom_queries TEXT NOT NULL DEFAULT '',
                 audio_mode TEXT NOT NULL DEFAULT 'standard' CHECK(audio_mode IN ('standard','bass_guard')),
                 target_lufs INTEGER NOT NULL DEFAULT -16,
                 limiter_ceiling_db REAL NOT NULL DEFAULT -1.0,
@@ -162,6 +200,9 @@ def init_db() -> None:
             "allowed_network": "TEXT NOT NULL DEFAULT ''",
             "transition_mode": "TEXT NOT NULL DEFAULT 'scratch'",
             "transition_volume": "INTEGER NOT NULL DEFAULT 55",
+            "autodj_enabled": "INTEGER NOT NULL DEFAULT 1",
+            "autodj_playlists": "TEXT NOT NULL DEFAULT '[\"cz_funk\",\"cz_oldies\",\"cz_hiphop\"]'",
+            "autodj_custom_queries": "TEXT NOT NULL DEFAULT ''",
         }
         for column, definition in venue_migrations.items():
             if column not in venue_columns:
@@ -212,7 +253,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="PUB Jukebox", version="1.4.0", lifespan=lifespan)
+app = FastAPI(title="PUB Jukebox", version="1.5.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
@@ -250,6 +291,11 @@ class VenueSettingsUpdate(BaseModel):
     menu_text: str = Field(default="", max_length=4000)
     transition_mode: Literal["none", "scratch"] = "scratch"
     transition_volume: int = Field(default=55, ge=0, le=100)
+    autodj_enabled: bool = True
+    autodj_playlists: list[Literal["cz_funk", "cz_oldies", "cz_hiphop", "karaoke"]] = Field(
+        default_factory=lambda: list(DEFAULT_AUTO_DJ_PLAYLISTS), max_length=4
+    )
+    autodj_custom_queries: str = Field(default="", max_length=1000)
     audio_mode: Literal["standard", "bass_guard"] = "standard"
     target_lufs: int = Field(default=-16, ge=-24, le=-8)
     limiter_ceiling_db: float = Field(default=-1.0, ge=-6.0, le=0.0)
@@ -280,6 +326,27 @@ def clean_text(value: str, limit: int) -> str:
 def clean_menu(value: str) -> str:
     lines = [clean_text(line, 140) for line in value.splitlines()]
     return "\n".join(line for line in lines if line)[:4000]
+
+
+def normalize_autodj_playlists(value) -> list[str]:
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (TypeError, ValueError):
+            value = value.split(",")
+    if not isinstance(value, list):
+        return list(DEFAULT_AUTO_DJ_PLAYLISTS)
+    result = []
+    for item in value:
+        key = str(item).strip()
+        if key in AUTO_DJ_PLAYLISTS and key not in result:
+            result.append(key)
+    return result
+
+
+def clean_autodj_queries(value: str) -> str:
+    lines = [clean_text(line, 100) for line in value.splitlines()]
+    return "\n".join(line for line in lines if len(line) >= 2)[:1000]
 
 
 def client_ip(request: Request) -> str:
@@ -331,6 +398,8 @@ def venue_settings() -> dict:
     result = dict(row)
     if isinstance(result.get("features"), str):
         result["features"] = json.loads(result["features"])
+    result["autodj_enabled"] = bool(result.get("autodj_enabled", True))
+    result["autodj_playlists"] = normalize_autodj_playlists(result.get("autodj_playlists"))
     result["is_active"] = bool(result.get("is_active", True))
     return result
 
@@ -385,8 +454,12 @@ def update_network_lock(action: str, request: Request) -> dict:
 def update_venue_settings(payload: VenueSettingsUpdate) -> dict:
     business_name = clean_text(payload.business_name, 80)
     menu_text = clean_menu(payload.menu_text)
+    autodj_playlists = normalize_autodj_playlists(payload.autodj_playlists)
+    autodj_custom_queries = clean_autodj_queries(payload.autodj_custom_queries)
     if len(business_name) < 2:
         raise HTTPException(422, "Název podniku je příliš krátký.")
+    if payload.autodj_enabled and not autodj_playlists and not autodj_custom_queries:
+        raise HTTPException(422, "Pro AutoDJ vyber alespoň jeden playlist nebo přidej vlastní téma.")
     if USE_SUPABASE:
         result = settings_rpc(
             "update",
@@ -396,6 +469,9 @@ def update_venue_settings(payload: VenueSettingsUpdate) -> dict:
                 "menu_text": menu_text,
                 "transition_mode": payload.transition_mode,
                 "transition_volume": payload.transition_volume,
+                "autodj_enabled": payload.autodj_enabled,
+                "autodj_playlists": autodj_playlists,
+                "autodj_custom_queries": autodj_custom_queries,
                 "audio_mode": payload.audio_mode,
                 "target_lufs": payload.target_lufs,
                 "limiter_ceiling_db": payload.limiter_ceiling_db,
@@ -416,7 +492,8 @@ def update_venue_settings(payload: VenueSettingsUpdate) -> dict:
         conn.execute(
             """
             UPDATE venue_settings
-            SET business_name=?, tv_mode=?, menu_text=?, transition_mode=?, transition_volume=?, audio_mode=?, target_lufs=?,
+            SET business_name=?, tv_mode=?, menu_text=?, transition_mode=?, transition_volume=?,
+                autodj_enabled=?, autodj_playlists=?, autodj_custom_queries=?, audio_mode=?, target_lufs=?,
                 limiter_ceiling_db=?, bass_guard_strength=?, revision=revision+1, updated_at=?
             WHERE venue_key=?
             """,
@@ -426,6 +503,9 @@ def update_venue_settings(payload: VenueSettingsUpdate) -> dict:
                 menu_text,
                 payload.transition_mode,
                 payload.transition_volume,
+                int(payload.autodj_enabled),
+                json.dumps(autodj_playlists, ensure_ascii=False, separators=(",", ":")),
+                autodj_custom_queries,
                 payload.audio_mode,
                 payload.target_lufs,
                 payload.limiter_ceiling_db,
@@ -441,6 +521,8 @@ def update_venue_settings(payload: VenueSettingsUpdate) -> dict:
     result = dict(row)
     if isinstance(result.get("features"), str):
         result["features"] = json.loads(result["features"])
+    result["autodj_enabled"] = bool(result.get("autodj_enabled", True))
+    result["autodj_playlists"] = normalize_autodj_playlists(result.get("autodj_playlists"))
     result["is_active"] = bool(result.get("is_active", True))
     return result
 
@@ -617,7 +699,8 @@ def queue_rows(request: Request | None = None) -> list[dict]:
             SELECT q.id, q.video_id, q.title, q.artist, q.thumbnail, q.requested_by,
                    q.votes, q.priority, q.priority_requested, q.status, q.created_at,
                    CASE WHEN v.id IS NULL THEN 0 ELSE 1 END AS voted_by_me,
-                   CASE WHEN q.requester_id=? THEN 1 ELSE 0 END AS requested_by_me
+                   CASE WHEN q.requester_id=? THEN 1 ELSE 0 END AS requested_by_me,
+                   CASE WHEN q.requester_id='autodj' THEN 1 ELSE 0 END AS is_autodj
             FROM queue q
             LEFT JOIN votes v ON v.queue_id=q.id AND v.voter_id=?
             WHERE q.status IN ('playing','queued')
@@ -666,6 +749,108 @@ def advance_queue() -> dict | None:
             if next_row
             else None
         )
+
+
+def autodj_status() -> dict:
+    if USE_SUPABASE:
+        result = supabase_rpc("jukebox_autodj_rpc", "status")
+        return result if isinstance(result, dict) else {}
+    with connection() as conn:
+        prepared = conn.execute(
+            "SELECT * FROM queue WHERE status='queued' AND requester_id='autodj' ORDER BY id LIMIT 1"
+        ).fetchone()
+        completed = conn.execute(
+            "SELECT COUNT(*) AS n FROM queue WHERE requester_id='autodj' AND status='done'"
+        ).fetchone()["n"]
+        recent = conn.execute(
+            "SELECT video_id FROM queue WHERE status IN ('playing','queued','done') ORDER BY id DESC LIMIT 30"
+        ).fetchall()
+    return {
+        "prepared": bool(prepared),
+        "song": dict(prepared) if prepared else None,
+        "completed": int(completed),
+        "recent_video_ids": [row["video_id"] for row in recent],
+    }
+
+
+def clear_autodj_buffer() -> dict:
+    if USE_SUPABASE:
+        result = supabase_rpc("jukebox_autodj_rpc", "clear")
+        return result if isinstance(result, dict) else {"ok": True}
+    with connection() as conn:
+        removed = conn.execute(
+            "UPDATE queue SET status='removed', finished_at=? WHERE status='queued' AND requester_id='autodj'",
+            (now(),),
+        ).rowcount
+        conn.commit()
+    return {"ok": True, "removed": removed}
+
+
+def insert_autodj_candidate(song: dict, playlist_label: str) -> dict:
+    payload = {
+        "video_id": song["video_id"],
+        "title": clean_text(song.get("title", ""), 160),
+        "artist": clean_text(song.get("artist", ""), 100),
+        "thumbnail": song.get("thumbnail", "") if str(song.get("thumbnail", "")).startswith("https://") else "",
+        "playlist_label": clean_text(playlist_label, 26),
+    }
+    if USE_SUPABASE:
+        result = supabase_rpc("jukebox_autodj_rpc", "prepare", payload)
+        return result if isinstance(result, dict) else {"prepared": False}
+    with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        existing = conn.execute(
+            "SELECT * FROM queue WHERE status='queued' AND requester_id='autodj' ORDER BY id LIMIT 1"
+        ).fetchone()
+        if existing:
+            conn.commit()
+            return {"prepared": True, "song": dict(existing), "existing": True}
+        duplicate = conn.execute(
+            """
+            SELECT id FROM queue
+            WHERE video_id=? AND id IN (
+                SELECT id FROM queue WHERE status IN ('playing','queued','done') ORDER BY id DESC LIMIT 30
+            ) LIMIT 1
+            """,
+            (payload["video_id"],),
+        ).fetchone()
+        if duplicate:
+            conn.commit()
+            return {"prepared": False, "reason": "recent"}
+        cursor = conn.execute(
+            """
+            INSERT INTO queue(
+                video_id,title,artist,thumbnail,requested_by,requester_id,priority,created_at
+            ) VALUES(?,?,?,?,?,'autodj',-100,?)
+            """,
+            (
+                payload["video_id"],
+                payload["title"],
+                payload["artist"],
+                payload["thumbnail"],
+                f"AutoDJ · {payload['playlist_label']}",
+                now(),
+            ),
+        )
+        row = dict(conn.execute("SELECT * FROM queue WHERE id=?", (cursor.lastrowid,)).fetchone())
+        conn.commit()
+    row.pop("requester_id", None)
+    return {"prepared": True, "song": row, "existing": False}
+
+
+def autodj_program(profile: dict, completed: int) -> tuple[str, str] | None:
+    programs = []
+    selected = normalize_autodj_playlists(profile.get("autodj_playlists"))
+    for key in selected:
+        definition = AUTO_DJ_PLAYLISTS[key]
+        queries = definition["queries"]
+        query_index = (completed // max(1, len(selected))) % len(queries)
+        programs.append((definition["label"], queries[query_index]))
+    for query in clean_autodj_queries(str(profile.get("autodj_custom_queries", ""))).splitlines():
+        programs.append(("Vlastní mix", f"{query} music official"))
+    if not programs:
+        return None
+    return programs[completed % len(programs)]
 
 
 def public_base(request: Request) -> str:
@@ -739,6 +924,9 @@ def display_settings():
         "menu_text": profile.get("menu_text", ""),
         "transition_mode": profile.get("transition_mode", "scratch"),
         "transition_volume": int(profile.get("transition_volume", 55)),
+        "autodj_enabled": bool(profile.get("autodj_enabled", True)),
+        "autodj_playlists": normalize_autodj_playlists(profile.get("autodj_playlists")),
+        "autodj_custom_queries": profile.get("autodj_custom_queries", ""),
         "audio_mode": profile.get("audio_mode", "standard"),
         "target_lufs": int(profile.get("target_lufs", -16)),
         "limiter_ceiling_db": float(profile.get("limiter_ceiling_db", -1.0)),
@@ -795,6 +983,9 @@ def admin_config(request: Request):
         "menu_text": profile.get("menu_text", ""),
         "transition_mode": profile.get("transition_mode", "scratch"),
         "transition_volume": int(profile.get("transition_volume", 55)),
+        "autodj_enabled": bool(profile.get("autodj_enabled", True)),
+        "autodj_playlists": normalize_autodj_playlists(profile.get("autodj_playlists")),
+        "autodj_custom_queries": profile.get("autodj_custom_queries", ""),
         "plan": profile.get("plan", "pilot"),
         "features": profile.get("features", {}),
         "is_active": bool(profile.get("is_active", True)),
@@ -815,7 +1006,10 @@ def admin_config(request: Request):
 @app.put("/api/admin/display")
 def save_display_settings(payload: VenueSettingsUpdate, request: Request):
     require_admin(request)
-    return update_venue_settings(payload)
+    saved = update_venue_settings(payload)
+    if not payload.autodj_enabled:
+        clear_autodj_buffer()
+    return saved
 
 
 @app.get("/api/admin/audio/status")
@@ -923,6 +1117,9 @@ def add_to_queue(song: Song, request: Request):
 @app.post("/api/queue/{song_id}/vote")
 def vote(song_id: int, request: Request):
     voter = require_guest(request)
+    public_song = next((song for song in queue_rows(request) if song["id"] == song_id), None)
+    if public_song and str(public_song.get("requested_by", "")).startswith("AutoDJ"):
+        raise HTTPException(409, "AutoDJ zásoba se nehlasuje; vlastní skladba ji vždy předběhne.")
     if USE_SUPABASE:
         return db_rpc("vote", {"song_id": song_id, "voter_id": voter})
     with connection() as conn:
@@ -1053,6 +1250,38 @@ def player_ended(request: Request):
     if USE_SUPABASE:
         return db_rpc("player_ended")
     return {"ok": True, "song": advance_queue()}
+
+
+@app.post("/api/player/autodj/prepare")
+def prepare_autodj(request: Request):
+    require_admin(request)
+    profile = venue_settings()
+    if not bool(profile.get("autodj_enabled", True)):
+        clear_autodj_buffer()
+        return {"enabled": False, "prepared": False}
+
+    status = autodj_status()
+    if status.get("prepared"):
+        return {"enabled": True, **status}
+    completed = int(status.get("completed", 0))
+    program = autodj_program(profile, completed)
+    if not program:
+        return {"enabled": True, "prepared": False, "reason": "no_playlist"}
+    playlist_label, query = program
+    results, provider = search_youtube_catalog(query, 10, fallback_first=True)
+    recent = set(status.get("recent_video_ids") or [])
+    for song in results:
+        if song.get("video_id") in recent:
+            continue
+        prepared = insert_autodj_candidate(song, playlist_label)
+        if prepared.get("prepared"):
+            return {
+                "enabled": True,
+                "playlist": playlist_label,
+                "provider": provider,
+                **prepared,
+            }
+    return {"enabled": True, "prepared": False, "reason": "no_fresh_track"}
 
 
 @app.get("/api/player/state")
@@ -1194,11 +1423,51 @@ def fallback_youtube_search(query: str, limit: int) -> list[dict]:
     return results
 
 
+def search_youtube_catalog(query: str, limit: int, fallback_first: bool = False) -> tuple[list[dict], str]:
+    cache_key = f"{'fallback' if fallback_first else 'official'}|{query.lower()}|{limit}"
+    with SEARCH_LOCK:
+        cached = SEARCH_CACHE.get(cache_key)
+    if cached and cached[0] > time.time():
+        return cached[1], "cache"
+
+    results: list[dict] = []
+    provider = "záložní vyhledávač"
+    errors = []
+    if fallback_first:
+        try:
+            results = fallback_youtube_search(query, limit)
+        except Exception as exc:  # yt-dlp can change when YouTube changes upstream.
+            errors.append(str(exc))
+    if not results and YOUTUBE_API_KEY:
+        try:
+            results = official_youtube_search(query, limit)
+            provider = "YouTube"
+        except (httpx.HTTPError, ValueError) as exc:
+            errors.append(str(exc))
+    if not results and not fallback_first:
+        try:
+            results = fallback_youtube_search(query, limit)
+        except Exception as exc:  # yt-dlp can change when YouTube changes upstream.
+            errors.append(str(exc))
+    if not results:
+        if errors:
+            raise HTTPException(503, "Vyhledávání YouTube je dočasně nedostupné.")
+        raise HTTPException(404, "Pro tento dotaz jsem nenašel žádnou skladbu.")
+
+    with SEARCH_LOCK:
+        SEARCH_CACHE[cache_key] = (time.time() + 900, results)
+        if len(SEARCH_CACHE) > 120:
+            oldest = min(SEARCH_CACHE, key=lambda key: SEARCH_CACHE[key][0])
+            SEARCH_CACHE.pop(oldest, None)
+    return results, provider
+
+
 @app.get("/api/search")
 def search_videos(
     request: Request,
     q: str = Query(min_length=2, max_length=100),
     limit: int = Query(default=8, ge=1, le=10),
+    mode: Literal["music", "karaoke"] = Query(default="music"),
 ):
     requester = require_guest(request)
     cutoff = time.time() - 60
@@ -1208,35 +1477,7 @@ def search_videos(
     activity.append(time.time())
     SEARCH_ACTIVITY[requester] = activity
     query = clean_text(q, 100)
-    cache_key = f"{query.lower()}|{limit}"
-    with SEARCH_LOCK:
-        cached = SEARCH_CACHE.get(cache_key)
-    if cached and cached[0] > time.time():
-        return {"items": cached[1], "provider": "cache"}
-
-    results: list[dict] = []
-    provider = "záložní vyhledávač"
-    official_error = None
-    if YOUTUBE_API_KEY:
-        try:
-            results = official_youtube_search(query, limit)
-            provider = "YouTube"
-        except (httpx.HTTPError, ValueError) as exc:
-            official_error = str(exc)
-    if not results:
-        try:
-            results = fallback_youtube_search(query, limit)
-        except Exception as exc:  # yt-dlp can change when YouTube changes upstream.
-            detail = "Vyhledávání YouTube je dočasně nedostupné. Zkus vložit přímý YouTube odkaz."
-            if official_error:
-                detail += " Oficiální API také neodpovědělo."
-            raise HTTPException(503, detail) from exc
-    if not results:
-        raise HTTPException(404, "Pro tento dotaz jsem nenašel žádnou skladbu.")
-
-    with SEARCH_LOCK:
-        SEARCH_CACHE[cache_key] = (time.time() + 300, results)
-        if len(SEARCH_CACHE) > 100:
-            oldest = min(SEARCH_CACHE, key=lambda key: SEARCH_CACHE[key][0])
-            SEARCH_CACHE.pop(oldest, None)
-    return {"items": results, "provider": provider}
+    if mode == "karaoke":
+        query = clean_text(f"{query} karaoke instrumental s textem", 100)
+    results, provider = search_youtube_catalog(query, limit)
+    return {"items": results, "provider": provider, "mode": mode}
