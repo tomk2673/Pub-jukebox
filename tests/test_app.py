@@ -234,8 +234,11 @@ def test_karaoke_search_requires_lyrics_with_original_vocals(tmp_path, monkeypat
         response = client.get("/api/search?q=Zagorova&mode=karaoke")
         assert response.status_code == 200
         assert response.json()["mode"] == "karaoke"
-        assert queries[0] == "Zagorova lyrics original audio -instrumental -karaoke"
+        assert queries[0] == "Zagorova lyrics"
         assert "s textem" not in queries[0]
+        assert "original audio" not in queries[0]
+        assert "instrumental" not in queries[0]
+        assert "karaoke" not in queries[0]
 
 
 def test_windows_audio_processor_heartbeat(tmp_path, monkeypatch):

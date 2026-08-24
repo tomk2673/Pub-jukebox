@@ -52,7 +52,7 @@ SEARCH_LOCK = threading.Lock()
 LOGIN_FAILURES: dict[str, list[float]] = {}
 SEARCH_ACTIVITY: dict[str, list[float]] = {}
 NETWORK_CACHE: dict[str, float | str] = {"expires": 0.0, "allowed": ""}
-LYRICS_SEARCH_SUFFIX = "lyrics original audio -instrumental -karaoke"
+LYRICS_SEARCH_SUFFIX = "lyrics"
 AUTO_DJ_PLAYLISTS = {
     "cz_funk": {
         "label": "Český funk",
@@ -254,7 +254,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="PUB Jukebox", version="1.5.1", lifespan=lifespan)
+app = FastAPI(title="PUB Jukebox", version="1.5.2", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
@@ -1479,8 +1479,7 @@ def search_videos(
     SEARCH_ACTIVITY[requester] = activity
     query = clean_text(q, 100)
     if mode == "karaoke":
-        # V baru se zpívá přes původní vokál. Hledáme proto lyric video s
-        # originálním audiem a výslovně vyřazujeme instrumentální podklady.
-        query = clean_text(f"{clean_text(query, 54)} {LYRICS_SEARCH_SUFFIX}", 100)
+        # Pro hospodské karaoke hledáme původní skladbu s textem ve videu.
+        query = clean_text(f"{clean_text(query, 92)} {LYRICS_SEARCH_SUFFIX}", 100)
     results, provider = search_youtube_catalog(query, limit)
     return {"items": results, "provider": provider, "mode": mode}

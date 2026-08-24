@@ -1,4 +1,4 @@
-# PUB Jukebox 1.5.1
+# PUB Jukebox 1.5.2
 
 Webový jukebox pro bar. Host načte QR kód, vyhledá skladbu podle názvu na YouTube, přidá ji do společné fronty a může jednou hlasovat. Obsluha řídí pořadí a TV přehrává frontu automaticky.
 
