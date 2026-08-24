@@ -131,6 +131,33 @@ function renderVenueSettings() {
   $("limiterCeiling").value = state.config.limiter_ceiling_db ?? -1;
   renderAudioValues();
   renderAudioProcessor();
+  renderNetworkLock();
+}
+
+function renderNetworkLock() {
+  const network = state.config?.network_lock || {};
+  $("networkTitle").textContent = network.enabled ? "Pouze barová Wi‑Fi" : "Přístup není omezený";
+  $("networkCopy").textContent = network.enabled
+    ? `Povolená síť: ${network.allowed_network}${network.current_matches ? " · jsi v ní" : " · právě jsi mimo ni"}`
+    : "Hosté mohou jukebox otevřít z jakékoliv sítě.";
+  $("captureNetworkButton").textContent = network.enabled ? "Aktualizovat na tuto Wi‑Fi" : "Nastavit tuto Wi‑Fi";
+  $("disableNetworkButton").classList.toggle("hidden", !network.enabled);
+}
+
+async function updateNetwork(action) {
+  $("networkStatus").textContent = action === "capture" ? "Zjišťuji veřejnou IP…" : "Vypínám omezení…";
+  try {
+    const network = await api("/api/admin/network", { method: "PUT", body: JSON.stringify({ action }) });
+    state.config = { ...state.config, network_lock: network };
+    renderNetworkLock();
+    $("networkStatus").textContent = action === "capture"
+      ? "Uloženo. QR teď funguje jen na této Wi‑Fi."
+      : "Omezení sítě je vypnuté.";
+    $("networkStatus").className = "status success";
+  } catch (error) {
+    $("networkStatus").textContent = error.message;
+    $("networkStatus").className = "status error";
+  }
 }
 
 function renderAudioProcessor() {
@@ -262,6 +289,8 @@ function wireEvents() {
     await navigator.clipboard.writeText(state.config.join_url);
     status("Odkaz zkopírován.", "success");
   });
+  $("captureNetworkButton").addEventListener("click", () => updateNetwork("capture"));
+  $("disableNetworkButton").addEventListener("click", () => updateNetwork("disable"));
   $("logoutButton").addEventListener("click", async () => {
     await api("/api/admin/logout", { method: "POST" });
     showLogin();

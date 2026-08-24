@@ -254,6 +254,9 @@ input[type="range"] { min-height: 28px; padding: 0; accent-color: var(--amber); 
 .install-guide summary { cursor: pointer; color: var(--amber); font-size: 12px; font-weight: 850; }
 .install-guide ol { margin: 10px 0 0 20px; padding: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
 .install-guide code { color: var(--text); }
+.network-card { margin-top: 16px; padding: 13px; border: 1px solid var(--line); border-radius: 14px; background: rgba(0,0,0,.14); }
+.network-card strong { display: block; margin: 4px 0 6px; }
+.network-card p { margin: 0 0 10px; line-height: 1.45; word-break: break-word; }
 .audio-picker { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .pro-option span::after { content: "PRO"; position: absolute; top: 9px; right: 9px; padding: 3px 5px; border-radius: 6px; color: #17120a; font-size: 8px; font-weight: 950; letter-spacing: .08em; background: var(--amber); }
 .audio-controls { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; margin-top: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 16px; background: rgba(0,0,0,.13); }

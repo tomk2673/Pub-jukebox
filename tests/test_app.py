@@ -11,6 +11,7 @@ def make_client(tmp_path, monkeypatch):
     monkeypatch.setattr(jukebox, "USE_SUPABASE", False)
     jukebox.LOGIN_FAILURES.clear()
     jukebox.SEARCH_CACHE.clear()
+    jukebox.NETWORK_CACHE.update(expires=0.0, allowed="")
     return TestClient(jukebox.app)
 
 
@@ -169,6 +170,32 @@ def test_windows_audio_processor_heartbeat(tmp_path, monkeypatch):
         assert status["extension_version"] == "0.1.0"
         assert status["measured_lufs"] == -15.8
         assert status["bass_reduction_db"] == 4.5
+
+
+def test_guest_access_can_be_locked_to_bar_network(tmp_path, monkeypatch):
+    bar_ip = {"x-real-ip": "203.0.113.10"}
+    outside_ip = {"x-real-ip": "198.51.100.25"}
+    with make_client(tmp_path, monkeypatch) as client:
+        login_response = client.post("/api/admin/login", json={"pin": jukebox.ADMIN_PIN}, headers=bar_ip)
+        assert login_response.status_code == 200
+        locked = client.put("/api/admin/network", json={"action": "capture"}, headers=bar_ip)
+        assert locked.status_code == 200
+        assert locked.json()["enabled"] is True
+        assert locked.json()["allowed_network"] == "203.0.113.10/32"
+
+        client.post("/api/admin/logout")
+        client.cookies.clear()
+        assert client.get(f"/guest?code={jukebox.JOIN_CODE}", headers=outside_ip).status_code == 403
+        assert client.get("/api/queue", headers=outside_ip).status_code == 403
+        assert client.get(f"/guest?code={jukebox.JOIN_CODE}", headers=bar_ip).status_code == 200
+
+        client.cookies.clear()
+        assert client.post("/api/admin/login", json={"pin": jukebox.ADMIN_PIN}, headers=outside_ip).status_code == 200
+        unlocked = client.put("/api/admin/network", json={"action": "disable"}, headers=outside_ip)
+        assert unlocked.status_code == 200
+        assert unlocked.json()["enabled"] is False
+        client.cookies.clear()
+        assert client.get(f"/guest?code={jukebox.JOIN_CODE}", headers=outside_ip).status_code == 200
 
 
 def test_supabase_routes_use_rpc(tmp_path, monkeypatch):

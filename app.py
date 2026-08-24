@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import ipaddress
 import io
 import json
 import os
@@ -50,6 +51,7 @@ SEARCH_CACHE: dict[str, tuple[float, list[dict]]] = {}
 SEARCH_LOCK = threading.Lock()
 LOGIN_FAILURES: dict[str, list[float]] = {}
 SEARCH_ACTIVITY: dict[str, list[float]] = {}
+NETWORK_CACHE: dict[str, float | str] = {"expires": 0.0, "allowed": ""}
 
 
 def connection() -> sqlite3.Connection:
@@ -106,6 +108,7 @@ def init_db() -> None:
                 target_lufs INTEGER NOT NULL DEFAULT -16,
                 limiter_ceiling_db REAL NOT NULL DEFAULT -1.0,
                 bass_guard_strength INTEGER NOT NULL DEFAULT 65,
+                allowed_network TEXT NOT NULL DEFAULT '',
                 plan TEXT NOT NULL DEFAULT 'pilot',
                 features TEXT NOT NULL DEFAULT '{"search":true,"voting":true,"priority":true,"tv_modes":true,"drink_menu":true,"bass_guard":true}',
                 is_active INTEGER NOT NULL DEFAULT 1,
@@ -154,6 +157,7 @@ def init_db() -> None:
             "target_lufs": "INTEGER NOT NULL DEFAULT -16",
             "limiter_ceiling_db": "REAL NOT NULL DEFAULT -1.0",
             "bass_guard_strength": "INTEGER NOT NULL DEFAULT 65",
+            "allowed_network": "TEXT NOT NULL DEFAULT ''",
         }
         for column, definition in venue_migrations.items():
             if column not in venue_columns:
@@ -204,7 +208,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="PUB Jukebox", version="1.2.0", lifespan=lifespan)
+app = FastAPI(title="PUB Jukebox", version="1.3.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
@@ -255,6 +259,10 @@ class AudioProcessorHeartbeat(BaseModel):
     limiter_reduction_db: float = Field(default=0.0, ge=0.0, le=30.0)
 
 
+class NetworkLockUpdate(BaseModel):
+    action: Literal["capture", "disable"]
+
+
 def now() -> int:
     return int(time.time())
 
@@ -266,6 +274,34 @@ def clean_text(value: str, limit: int) -> str:
 def clean_menu(value: str) -> str:
     lines = [clean_text(line, 140) for line in value.splitlines()]
     return "\n".join(line for line in lines if line)[:4000]
+
+
+def client_ip(request: Request) -> str:
+    candidates = [
+        request.headers.get("x-real-ip", ""),
+        request.headers.get("x-vercel-forwarded-for", ""),
+        request.headers.get("x-forwarded-for", ""),
+        request.client.host if request.client else "",
+    ]
+    for candidate in candidates:
+        raw = candidate.split(",", 1)[0].strip().strip("[]")
+        try:
+            address = ipaddress.ip_address(raw)
+            if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
+                return str(address.ipv4_mapped)
+            return str(address)
+        except ValueError:
+            continue
+    return ""
+
+
+def network_for_ip(value: str) -> str:
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError as exc:
+        raise HTTPException(422, "Veřejnou IP této sítě se nepodařilo zjistit.") from exc
+    prefix = 32 if isinstance(address, ipaddress.IPv4Address) else 64
+    return str(ipaddress.ip_network(f"{address}/{prefix}", strict=False))
 
 
 def venue_settings() -> dict:
@@ -291,6 +327,53 @@ def venue_settings() -> dict:
         result["features"] = json.loads(result["features"])
     result["is_active"] = bool(result.get("is_active", True))
     return result
+
+
+def allowed_venue_network(refresh: bool = False) -> str:
+    if not refresh and float(NETWORK_CACHE.get("expires", 0)) > time.monotonic():
+        return str(NETWORK_CACHE.get("allowed", ""))
+    profile = venue_settings()
+    allowed = str(profile.get("allowed_network") or "")
+    NETWORK_CACHE.update(expires=time.monotonic() + 10, allowed=allowed)
+    return allowed
+
+
+def network_matches(request: Request, allowed: str | None = None) -> bool:
+    allowed = allowed if allowed is not None else allowed_venue_network()
+    if not allowed:
+        return True
+    try:
+        return ipaddress.ip_address(client_ip(request)) in ipaddress.ip_network(allowed, strict=False)
+    except ValueError:
+        return False
+
+
+def network_status(request: Request, refresh: bool = False) -> dict:
+    allowed = allowed_venue_network(refresh=refresh)
+    current = client_ip(request)
+    return {
+        "enabled": bool(allowed),
+        "allowed_network": allowed,
+        "current_ip": current,
+        "current_matches": network_matches(request, allowed),
+    }
+
+
+def update_network_lock(action: str, request: Request) -> dict:
+    allowed = network_for_ip(client_ip(request)) if action == "capture" else ""
+    if USE_SUPABASE:
+        result = settings_rpc("network_update", {"allowed_network": allowed})
+        if not isinstance(result, dict):
+            raise HTTPException(503, "Síť baru se nepodařilo uložit.")
+    else:
+        with connection() as conn:
+            conn.execute(
+                "UPDATE venue_settings SET allowed_network=?, revision=revision+1, updated_at=? WHERE venue_key=?",
+                (allowed, now(), VENUE_KEY),
+            )
+            conn.commit()
+    NETWORK_CACHE.update(expires=0.0, allowed="")
+    return network_status(request, refresh=True)
 
 
 def update_venue_settings(payload: VenueSettingsUpdate) -> dict:
@@ -465,6 +548,8 @@ def guest_id(request: Request) -> str | None:
 
 
 def require_guest(request: Request) -> str:
+    if not is_admin(request) and not network_matches(request):
+        raise HTTPException(403, "Připoj se k Wi‑Fi tohoto podniku.")
     identity = guest_id(request)
     if not identity:
         raise HTTPException(401, "Otevři jukebox přes QR kód v baru.")
@@ -590,6 +675,8 @@ def root() -> RedirectResponse:
 
 @app.get("/guest", include_in_schema=False)
 def guest_page(request: Request, code: str = ""):
+    if not is_admin(request) and not network_matches(request):
+        return FileResponse(STATIC / "network.html", status_code=403)
     authorized = guest_id(request) is not None
     if not authorized and not hmac.compare_digest(code, JOIN_CODE):
         return FileResponse(STATIC / "join.html")
@@ -650,12 +737,14 @@ def display_settings():
 
 @app.get("/api/me")
 def me(request: Request):
-    return {"guest": guest_id(request) is not None, "admin": is_admin(request)}
+    admin = is_admin(request)
+    allowed = admin or network_matches(request)
+    return {"guest": allowed and guest_id(request) is not None, "admin": admin, "network_allowed": allowed}
 
 
 @app.post("/api/admin/login")
 def admin_login(payload: PinLogin, request: Request, response: Response):
-    client = request.client.host if request.client else "unknown"
+    client = client_ip(request) or "unknown"
     cutoff = time.time() - 300
     failures = [stamp for stamp in LOGIN_FAILURES.get(client, []) if stamp > cutoff]
     if len(failures) >= 6:
@@ -700,6 +789,7 @@ def admin_config(request: Request):
         "limiter_ceiling_db": float(profile.get("limiter_ceiling_db", -1.0)),
         "bass_guard_strength": int(profile.get("bass_guard_strength", 65)),
         "audio_processor": audio_processor_status(),
+        "network_lock": network_status(request),
         "join_url": join_url,
         "priority_price_czk": PRIORITY_PRICE_CZK,
         "night_volume": NIGHT_VOLUME,
@@ -726,6 +816,12 @@ def audio_processor_heartbeat(payload: AudioProcessorHeartbeat, request: Request
     return record_audio_heartbeat(payload)
 
 
+@app.put("/api/admin/network")
+def save_network_lock(payload: NetworkLockUpdate, request: Request):
+    require_admin(request)
+    return update_network_lock(payload.action, request)
+
+
 @app.get("/api/admin/qr.svg")
 def admin_qr(request: Request):
     require_admin(request)
@@ -739,6 +835,8 @@ def admin_qr(request: Request):
 
 @app.get("/api/queue")
 def get_queue(request: Request):
+    if not is_admin(request) and not network_matches(request):
+        raise HTTPException(403, "Připoj se k Wi‑Fi tohoto podniku.")
     return queue_rows(request)
 
 
