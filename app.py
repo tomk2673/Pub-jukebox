@@ -778,7 +778,7 @@ def autodj_status() -> dict:
             "SELECT COUNT(*) AS n FROM queue WHERE requester_id='autodj' AND status='done'"
         ).fetchone()["n"]
         recent = conn.execute(
-            "SELECT video_id FROM queue WHERE status IN ('playing','queued','done') ORDER BY id DESC LIMIT 30"
+            "SELECT video_id FROM queue WHERE status IN ('playing','queued','done') ORDER BY id DESC LIMIT 6"
         ).fetchall()
     return {
         "prepared": bool(prepared),
@@ -824,7 +824,7 @@ def insert_autodj_candidate(song: dict, playlist_label: str) -> dict:
             """
             SELECT id FROM queue
             WHERE video_id=? AND id IN (
-                SELECT id FROM queue WHERE status IN ('playing','queued','done') ORDER BY id DESC LIMIT 30
+                SELECT id FROM queue WHERE status IN ('playing','queued','done') ORDER BY id DESC LIMIT 6
             ) LIMIT 1
             """,
             (payload["video_id"],),
@@ -1261,10 +1261,6 @@ def prepare_autodj(request: Request):
     if not program:
         return {"enabled": True, "prepared": False, "reason": "no_playlist"}
     playlist_label, query = program
-    try:
-        results, provider = search_youtube_catalog(query, 10, fallback_first=True)
-    except HTTPException:
-        results, provider = [], "nouzový zásobník"
     emergency = [
         {
             **song,
@@ -1272,8 +1268,15 @@ def prepare_autodj(request: Request):
         }
         for song in AUTO_DJ_EMERGENCY_TRACKS.get(playlist_label, [])
     ]
-    candidates = [*results, *emergency]
     recent = set(status.get("recent_video_ids") or [])
+    candidates = [song for song in emergency if song.get("video_id") not in recent]
+    provider = "stálý barový zásobník"
+    if not candidates:
+        try:
+            results, provider = search_youtube_catalog(query, 10, fallback_first=True)
+        except HTTPException:
+            results, provider = [], "nouzový zásobník"
+        candidates = [*results, *emergency]
     for song in candidates:
         if song.get("video_id") in recent:
             continue

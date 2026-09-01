@@ -268,13 +268,6 @@ def test_admin_manages_venue_tv_and_audio_profile(tmp_path, monkeypatch):
 
 
 def test_autodj_prepares_filler_but_guest_queue_stays_first(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        jukebox,
-        "fallback_youtube_search",
-        lambda query, limit: [
-            {"video_id": VIDEO_B, "title": "Auto funk", "artist": "AutoDJ", "thumbnail": ""}
-        ],
-    )
     with make_client(tmp_path, monkeypatch) as client:
         join(client)
         first = add(client, VIDEO_A, "Guest first").json()
@@ -285,7 +278,8 @@ def test_autodj_prepares_filler_but_guest_queue_stays_first(tmp_path, monkeypatc
         prepared = client.post("/api/player/autodj/prepare")
         assert prepared.status_code == 200
         assert prepared.json()["prepared"] is True
-        assert prepared.json()["song"]["video_id"] == VIDEO_B
+        auto_video_id = prepared.json()["song"]["video_id"]
+        assert auto_video_id in {song["video_id"] for song in jukebox.AUTO_DJ_EMERGENCY_TRACKS["Český funk"]}
 
         queue = client.get("/api/queue").json()
         queued = [song for song in queue if song["status"] == "queued"]
@@ -295,7 +289,7 @@ def test_autodj_prepares_filler_but_guest_queue_stays_first(tmp_path, monkeypatc
         assert client.post(f"/api/queue/{queued[-1]['id']}/vote").status_code == 409
 
         assert client.post("/api/player/ended").json()["song"]["id"] == second["id"]
-        assert client.post("/api/player/ended").json()["song"]["video_id"] == VIDEO_B
+        assert client.post("/api/player/ended").json()["song"]["video_id"] == auto_video_id
 
 
 def test_autodj_uses_emergency_tracks_when_youtube_search_is_down(tmp_path, monkeypatch):
@@ -309,7 +303,7 @@ def test_autodj_uses_emergency_tracks_when_youtube_search_is_down(tmp_path, monk
         prepared = client.post("/api/player/autodj/prepare")
         assert prepared.status_code == 200
         assert prepared.json()["prepared"] is True
-        assert prepared.json()["provider"] == "nouzový zásobník"
+        assert prepared.json()["provider"] == "stálý barový zásobník"
         assert prepared.json()["song"]["status"] == "queued"
 
 
