@@ -55,9 +55,8 @@ def test_guest_search_add_and_duplicate_protection(tmp_path, monkeypatch):
         public_song = client.get("/api/queue").json()[0]
         assert public_song["requested_by_me"] == 1
         assert "requester_id" not in public_song
-        requested = client.post(f"/api/queue/{public_song['id']}/priority-request")
-        assert requested.status_code == 200
-        assert client.get("/api/queue").json()[0]["priority_requested"] == 1
+        assert public_song["status"] == "queued"
+        assert client.post(f"/api/queue/{public_song['id']}/priority-request").status_code == 404
 
 
 def test_one_vote_per_device_and_queue_order(tmp_path, monkeypatch):
@@ -73,6 +72,40 @@ def test_one_vote_per_device_and_queue_order(tmp_path, monkeypatch):
 
         queue = owner.get("/api/queue").json()
         assert [song["id"] for song in queue] == [song_b["id"], song_a["id"]]
+
+
+def test_guest_song_needs_no_admin_approval(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        join(client)
+        created = add(client, VIDEO_A, "Plays immediately").json()
+        queue = client.get("/api/queue").json()
+
+        assert created["status"] == "playing"
+        assert queue[0]["id"] == created["id"]
+        assert queue[0]["status"] == "playing"
+        assert client.post("/api/player/start").status_code == 401
+
+        login(client)
+        assert client.post("/api/player/start").json()["song"]["id"] == created["id"]
+
+
+def test_guest_song_starts_before_prepared_autodj_when_idle(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        with jukebox.connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO queue(video_id,title,artist,requested_by,requester_id,priority,created_at)
+                VALUES(?,?,?,?,?,-100,?)
+                """,
+                (VIDEO_B, "Auto reserve", "AutoDJ", "AutoDJ · Český funk", "autodj", jukebox.now()),
+            )
+            conn.commit()
+        join(client)
+        guest = add(client, VIDEO_A, "Guest wins").json()
+        queue = client.get("/api/queue").json()
+        assert guest["status"] == "playing"
+        assert queue[0]["id"] == guest["id"]
+        assert queue[1]["video_id"] == VIDEO_B
 
 
 def test_admin_controls_player_and_qr(tmp_path, monkeypatch):
@@ -118,7 +151,51 @@ def test_guest_mobile_layout_blocks_horizontal_overscroll(tmp_path, monkeypatch)
         assert "overscroll-behavior-x: none" in style.text
         assert "touch-action: pan-y pinch-zoom" in style.text
         assert ".guest-app .results .song-card > .btn" in style.text
-        assert 'pub-jukebox-v6' in worker.text
+        assert 'pub-jukebox-v8' in worker.text
+
+
+def test_all_surfaces_install_fullscreen_on_phone_and_computer(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        join(client)
+        guest = client.get("/guest")
+        admin = client.get("/admin")
+        tv = client.get("/tv")
+        worker = client.get("/sw.js")
+        installer = client.get("/static/install.js")
+
+        assert 'data-install-panel' in guest.text
+        assert "Nainstalovat aplikaci bez lišty" in guest.text
+        assert '/static/manifest.webmanifest' in guest.text
+        assert "Nainstalovat administraci bez lišty" in admin.text
+        assert '/static/admin.webmanifest' in admin.text
+        assert "Nainstalovat TV bez lišty" in tv.text
+        assert '/static/tv.webmanifest' in tv.text
+
+        manifests = {
+            "/static/manifest.webmanifest": "/guest",
+            "/static/admin.webmanifest": "/admin",
+            "/static/tv.webmanifest": "/tv",
+        }
+        for path, start_url in manifests.items():
+            payload = client.get(path).json()
+            assert payload["id"] == start_url
+            assert payload["start_url"] == start_url
+            assert payload["scope"] == "/"
+            assert payload["display"] == "fullscreen"
+            assert {icon["sizes"] for icon in payload["icons"]} == {"192x192", "512x512"}
+
+        assert worker.status_code == 200
+        assert worker.headers["service-worker-allowed"] == "/"
+        assert "no-cache" in worker.headers["cache-control"]
+        assert 'pub-jukebox-v8' in worker.text
+        assert "/static/admin.webmanifest" in worker.text
+        assert "/static/tv.webmanifest" in worker.text
+        assert 'register("/sw.js", { scope: "/" })' in installer.text
+        for size in (180, 192, 512):
+            icon = client.get(f"/static/icon-{size}.png")
+            assert icon.status_code == 200
+            assert icon.headers["content-type"] == "image/png"
+            assert icon.content.startswith(b"\x89PNG")
 
 
 def test_invalid_pin_and_video_are_rejected(tmp_path, monkeypatch):
@@ -219,6 +296,21 @@ def test_autodj_prepares_filler_but_guest_queue_stays_first(tmp_path, monkeypatc
 
         assert client.post("/api/player/ended").json()["song"]["id"] == second["id"]
         assert client.post("/api/player/ended").json()["song"]["video_id"] == VIDEO_B
+
+
+def test_autodj_uses_emergency_tracks_when_youtube_search_is_down(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        jukebox,
+        "search_youtube_catalog",
+        lambda *args, **kwargs: (_ for _ in ()).throw(jukebox.HTTPException(503, "offline")),
+    )
+    with make_client(tmp_path, monkeypatch) as client:
+        login(client)
+        prepared = client.post("/api/player/autodj/prepare")
+        assert prepared.status_code == 200
+        assert prepared.json()["prepared"] is True
+        assert prepared.json()["provider"] == "nouzový zásobník"
+        assert prepared.json()["song"]["status"] == "queued"
 
 
 def test_karaoke_search_requires_lyrics_with_original_vocals(tmp_path, monkeypatch):

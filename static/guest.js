@@ -92,23 +92,6 @@ function renderQueue() {
       auto.className = "priority small";
       auto.textContent = "zásoba · tvoje volba ji předběhne";
       actions.append(auto);
-    } else if (song.priority > 0) {
-      const priority = document.createElement("span");
-      priority.className = "priority small";
-      priority.textContent = "⚡ přednost";
-      actions.append(priority);
-    } else if (song.priority_requested) {
-      const pending = document.createElement("span");
-      pending.className = "priority small";
-      pending.textContent = "⚡ čeká na potvrzení";
-      actions.append(pending);
-    } else if (song.requested_by_me && state.config?.priority_price_czk > 0) {
-      const priorityButton = document.createElement("button");
-      priorityButton.className = "btn secondary compact";
-      priorityButton.type = "button";
-      priorityButton.textContent = `⚡ Předběhnout ${state.config.priority_price_czk} Kč`;
-      priorityButton.addEventListener("click", () => requestPriority(song.id, priorityButton));
-      actions.append(priorityButton);
     }
     if (!automatic) {
       const vote = document.createElement("button");
@@ -191,18 +174,6 @@ async function voteSong(id, button) {
   }
 }
 
-async function requestPriority(id, button) {
-  button.disabled = true;
-  try {
-    const result = await api(`/api/queue/${id}/priority-request`, { method: "POST" });
-    setStatus(result.message, "success");
-    await loadQueue(true);
-  } catch (error) {
-    button.disabled = false;
-    setStatus(error.message, "error");
-  }
-}
-
 async function boot() {
   $("searchForm").addEventListener("submit", search);
   $("refreshButton").addEventListener("click", () => loadQueue());
@@ -212,7 +183,6 @@ async function boot() {
   } catch (_) {}
   await loadQueue();
   setInterval(() => loadQueue(true), 3000);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("/static/sw.js").catch(() => {});
 }
 
 boot();

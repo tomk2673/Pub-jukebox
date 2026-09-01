@@ -16,8 +16,6 @@ services:
         generateValue: true
       - key: JUKEBOX_DB
         value: /var/data/jukebox.db
-      - key: PRIORITY_PRICE_CZK
-        value: "5"
       - key: NIGHT_VOLUME
         value: "55"
     disk:

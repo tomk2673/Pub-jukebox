@@ -6,7 +6,9 @@
   <meta name="theme-color" content="#090b0f">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Jukebox">
   <link rel="manifest" href="/static/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/static/icon-180.png">
   <link rel="stylesheet" href="/static/common.css">
   <title>PUB Jukebox</title>
 </head>
@@ -23,6 +25,11 @@
       <span class="small muted" id="connection">připojuji…</span>
     </header>
 
+    <div class="pwa-install hidden" data-install-panel>
+      <button class="btn secondary compact" type="button" data-install-app>Nainstalovat aplikaci bez lišty</button>
+      <p class="small muted hidden" data-install-note></p>
+    </div>
+
     <section class="hero">
       <article class="panel now-panel" id="nowPanel">
         <div class="now-content">
@@ -36,7 +43,7 @@
           <div class="eyebrow">SKLADEB PŘED TEBOU</div>
           <div class="big-number" id="queueCount">0</div>
         </div>
-        <p class="muted small">Hlasuj pro skladbu, kterou chceš dostat výš. Každý telefon má jeden hlas.</p>
+        <p class="muted small">Každá volba jde rovnou do fronty. Hlasuj pro skladbu, kterou chceš dostat výš; každý telefon má jeden hlas.</p>
       </article>
     </section>
 
@@ -66,6 +73,7 @@
     <section id="queue" aria-live="polite"></section>
     <p class="footer-note">Přehrávání zajišťuje YouTube. Dostupnost některých videí určuje jejich vlastník.</p>
   </main>
+  <script src="/static/install.js" defer></script>
   <script src="/static/guest.js" defer></script>
 </body>
 </html>

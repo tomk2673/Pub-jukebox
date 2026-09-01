@@ -1,14 +1,15 @@
 {
-  "name": "PUB Jukebox",
-  "short_name": "Jukebox",
-  "description": "Společná hudební fronta pro hosty baru",
-  "id": "/guest",
-  "start_url": "/guest",
+  "name": "PUB Jukebox TV",
+  "short_name": "Jukebox TV",
+  "description": "Fullscreen přehrávač jukeboxu pro obrazovku v baru",
+  "id": "/tv",
+  "start_url": "/tv",
   "scope": "/",
   "display": "fullscreen",
   "display_override": ["fullscreen", "standalone"],
-  "background_color": "#090b0f",
-  "theme_color": "#090b0f",
+  "orientation": "landscape",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "icons": [
     {"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
     {"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}

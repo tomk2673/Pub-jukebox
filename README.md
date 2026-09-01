@@ -1,8 +1,8 @@
-# PUB Jukebox 1.5.2
+# PUB Jukebox 1.7
 
 Webový jukebox pro bar. Host načte QR kód, vyhledá skladbu podle názvu na YouTube, přidá ji do společné fronty a může jednou hlasovat. Obsluha řídí pořadí a TV přehrává frontu automaticky.
 
-## Co verze 1.5 umí
+## Co verze 1.7 umí
 
 - hledání skladeb podle názvu a interpreta
 - záložní YouTube vyhledávání i bez API klíče
@@ -21,9 +21,10 @@ Webový jukebox pro bar. Host načte QR kód, vyhledá skladbu podle názvu na Y
 - AutoDJ zásobník pro plynulé pokračování při prázdné frontě; hostovská volba má vždy přednost
 - volitelné AutoDJ playlisty: český funk, české oldies, český hip-hop 90/00, karaoke a vlastní témata provozovny
 - samostatná volba karaoke: originální skladba se zpěvákem a textem ve videu, nikoli instrumentální podklad
+- instalovatelné fullscreen PWA bez lišt pro hosty, administraci i TV na telefonu a počítači
 - TV přehrávač s automatickým pokračováním
 - pauza, pokračování, přeskočení a vzdálená hlasitost
-- ruční potvrzení přednosti za 5 Kč
+- okamžité přidání skladby bez potvrzování obsluhou; pořadí řídí hlasování hostů
 - noční limit celkové hlasitosti
 - Night Bass Guard PRO pro Windows a Chrome: automatické srovnání hlasitosti, dynamická ochrana basů pod 120 Hz a look-ahead limiter
 - živý stav Windows procesoru a míra zásahu přímo v administraci
@@ -44,6 +45,15 @@ Po nasazení otevři:
 - `https://tvoje-adresa.vercel.app/admin` – ovládání obsluhy a QR kód
 - `https://tvoje-adresa.vercel.app/tv` – obrazovka s YouTube přehrávačem
 - host vstupuje přes QR kód z administrace
+
+## Instalace bez lišty prohlížeče
+
+- Host: na `/guest` zvol **Nainstalovat aplikaci bez lišty**.
+- Administrace: na `/admin` zvol **Nainstalovat administraci bez lišty**.
+- TV: na `/tv` zvol **Nainstalovat TV bez lišty**.
+- Chrome na počítači a Android zobrazí instalační dialog. Na iPhonu pokračuj přes **Sdílet → Přidat na plochu → Otevřít jako webovou aplikaci**.
+
+Každá varianta má vlastní startovní obrazovku a po spuštění z plochy používá režim `fullscreen` bez adresního řádku a ovládacích lišt prohlížeče.
 
 ## Vyhledávání
 
@@ -91,7 +101,6 @@ Viz `.env.example`. Nejdůležitější proměnné:
 | `JUKEBOX_DB_SECRET` | tajný klíč mezi aplikací a databázovým RPC |
 | `VENUE_KEY` | trvalý identifikátor provozovny, např. `ztraceny-bar` |
 | `DEFAULT_MENU_TEXT` | výchozí nápojová nabídka pro novou provozovnu |
-| `PRIORITY_PRICE_CZK` | cena ručně potvrzené přednosti |
 | `NIGHT_VOLUME` | limit hlasitosti v nočním režimu |
 
 ## Testy
@@ -110,4 +119,4 @@ Profil provozovny je oddělený od zdrojového kódu pomocí `VENUE_KEY`. V data
 
 Night Bass Guard je praktický adaptivní procesor pro provoz baru, ne certifikovaný měřicí přístroj EBU R128. Cílové LUFS proto představuje průběžný K-vážený odhad, který je vhodné doladit podle konkrétní aparatury a prostoru. Bez zapnutého Windows rozšíření zůstává zvuk YouTube beze změny a administrace pravdivě zobrazuje procesor jako nepřipojený.
 
-Veřejné přehrávání hudby a komerční použití musí provozovatel řešit v souladu s podmínkami YouTube a příslušnými hudebními licencemi. Automatická online platba za přednost není ve V1 zapojená; přednost potvrzuje obsluha po platbě u baru.
+Veřejné přehrávání hudby a komerční použití musí provozovatel řešit v souladu s podmínkami YouTube a příslušnými hudebními licencemi. Skladby se přidávají rovnou do fronty a jejich pořadí mění hlasování hostů; obsluha nic nepotvrzuje.

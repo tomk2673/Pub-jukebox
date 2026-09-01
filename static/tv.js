@@ -19,6 +19,11 @@ let lastTransitionId = null;
 let autoDjEnabled = true;
 let autoDjBusy = false;
 let nextAutoDjAttempt = 0;
+let outroTriggeredVideo = null;
+let outroCheckBusy = false;
+
+const DJ_OUTRO_LEAD_SECONDS = 7.5;
+const DJ_FADE_OUT_MS = 1350;
 
 const TRANSITION_VARIANTS = Object.freeze([
   Object.freeze({ id: "backspin", label: "DJ BACKSPIN", duration: 0.92 }),
@@ -168,12 +173,44 @@ async function playScratchTransition() {
   view.classList.add("hidden");
 }
 
-async function finishCurrentSong() {
+async function fadePlayerVolume(from, to, durationMs) {
+  if (!playerReady || !player) return;
+  const steps = Math.max(1, Math.round(durationMs / 75));
+  for (let step = 1; step <= steps; step += 1) {
+    const progress = step / steps;
+    player.setVolume(Math.round(from + (to - from) * progress));
+    await new Promise((resolve) => setTimeout(resolve, durationMs / steps));
+  }
+}
+
+async function queuedSongs() {
+  return (await api("/api/queue").catch(() => [])).filter((song) => song.status === "queued");
+}
+
+async function makeSureNextSongExists() {
+  let queued = await queuedSongs();
+  if (!queued.length && autoDjEnabled) {
+    await api("/api/player/autodj/prepare", { method: "POST" }).catch(() => null);
+    queued = await queuedSongs();
+  }
+  return queued;
+}
+
+async function finishCurrentSong(earlyMix = false) {
   if (transitioning) return;
   transitioning = true;
   try {
-    const queue = await api("/api/queue").catch(() => []);
-    if (queue.some((song) => song.status === "queued")) await playScratchTransition();
+    const queued = await makeSureNextSongExists();
+    if (queued.length) {
+      if (earlyMix) {
+        await Promise.all([
+          fadePlayerVolume(effectiveVolume, Math.min(8, effectiveVolume), DJ_FADE_OUT_MS),
+          playScratchTransition(),
+        ]);
+      } else {
+        await playScratchTransition();
+      }
+    }
     await api("/api/player/ended", { method: "POST" });
   } catch (_) {
     // Další synchronizace stav přehrávače bezpečně dorovná.
@@ -181,6 +218,25 @@ async function finishCurrentSong() {
     transitioning = false;
   }
   await sync(true);
+}
+
+async function monitorDjOutro() {
+  if (!playerReady || !player || transitioning || outroCheckBusy || !currentVideo) return;
+  if (player.getPlayerState() !== YT.PlayerState.PLAYING) return;
+  const duration = Number(player.getDuration?.() || 0);
+  const position = Number(player.getCurrentTime?.() || 0);
+  const remaining = duration - position;
+  if (duration < 30 || remaining <= 0 || remaining > DJ_OUTRO_LEAD_SECONDS) return;
+  if (outroTriggeredVideo === currentVideo) return;
+  outroCheckBusy = true;
+  try {
+    const queued = await makeSureNextSongExists();
+    if (!queued.length) return;
+    outroTriggeredVideo = currentVideo;
+    await finishCurrentSong(true);
+  } finally {
+    outroCheckBusy = false;
+  }
 }
 
 window.onYouTubeIframeAPIReady = () => {
@@ -216,8 +272,7 @@ function createPlayer() {
         if (event.data === YT.PlayerState.PLAYING) $("tapToPlay").classList.add("hidden");
       },
       onError: async () => {
-        await api("/api/player/ended", { method: "POST" }).catch(() => null);
-        setTimeout(() => sync(true), 700);
+        await finishCurrentSong(false);
       },
     },
   });
@@ -320,6 +375,7 @@ async function applyState(state, force = false) {
       }
     }
     currentVideo = song.video_id;
+    outroTriggeredVideo = null;
     player.loadVideoById(song.video_id);
   } else if (!song && currentVideo) {
     currentVideo = null;
@@ -386,6 +442,7 @@ async function boot() {
   const me = await api("/api/me").catch(() => ({ admin: false }));
   if (me.admin) await startTv();
   setInterval(() => sync(), 1500);
+  setInterval(() => monitorDjOutro(), 500);
 }
 
 boot();

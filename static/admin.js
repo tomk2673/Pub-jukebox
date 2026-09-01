@@ -82,19 +82,13 @@ function renderQueue() {
     const automatic = isAutoDj(song);
     copy.append(
       textBlock("song-title", `${automatic ? "AUTO" : index + 1}. ${song.title}`),
-      textBlock("song-meta", automatic ? `${song.artist || "YouTube"} · ${song.requested_by}` : `${song.artist || "YouTube"} · ${song.votes} hlasů${song.priority ? " · přednost" : ""}${song.priority_requested ? " · čeká na platbu" : ""}`),
+      textBlock("song-meta", automatic ? `${song.artist || "YouTube"} · ${song.requested_by}` : `${song.artist || "YouTube"} · ${song.votes} hlasů`),
     );
     const actions = document.createElement("div");
     actions.className = "song-actions";
     const play = actionButton("Hrát", "btn compact", () => queueAction(song.id, "play"));
-    const priority = automatic ? null : actionButton(
-      song.priority_requested ? `Potvrdit ${state.config.priority_price_czk} Kč` : `⚡ ${state.config.priority_price_czk} Kč`,
-      song.priority_requested ? "btn compact" : "btn secondary compact",
-      () => queueAction(song.id, "priority"),
-    );
     const remove = actionButton("Smazat", "btn danger compact", () => removeSong(song.id));
     actions.append(play);
-    if (priority) actions.append(priority);
     actions.append(remove);
     card.append(img, copy, actions);
     root.append(card);
@@ -280,7 +274,7 @@ async function loadAll(silent = false) {
 async function queueAction(id, action) {
   try {
     await api(`/api/queue/${id}/${action}`, { method: "POST" });
-    status(action === "priority" ? "Přednost potvrzena." : "Skladba se posílá na TV.", "success");
+    status("Skladba se posílá na TV.", "success");
     await loadAll(true);
   } catch (error) { status(error.message, "error"); }
 }

@@ -1,9 +1,15 @@
-const CACHE = "pub-jukebox-v6";
+const CACHE = "pub-jukebox-v9";
 const ASSETS = [
   "/static/common.css",
   "/static/guest.js",
   "/static/join.js",
-  "/static/manifest.webmanifest"
+  "/static/install.js",
+  "/static/manifest.webmanifest",
+  "/static/tv.webmanifest",
+  "/static/admin.webmanifest",
+  "/static/icon-180.png",
+  "/static/icon-192.png",
+  "/static/icon-512.png"
 ];
 
 self.addEventListener("install", (event) => {

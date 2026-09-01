@@ -4,6 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#090b0f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Jukebox Admin">
+  <link rel="manifest" href="/static/admin.webmanifest">
+  <link rel="apple-touch-icon" href="/static/icon-180.png">
   <link rel="stylesheet" href="/static/common.css">
   <title>Správa · PUB Jukebox</title>
 </head>
@@ -19,6 +24,10 @@
         <button class="btn" type="submit">Odemknout</button>
       </form>
       <div class="status" id="loginStatus" role="status"></div>
+      <div class="pwa-install hidden" data-install-panel>
+        <button class="btn secondary compact" type="button" data-install-app>Nainstalovat administraci bez lišty</button>
+        <p class="small muted hidden" data-install-note></p>
+      </div>
     </div>
   </section>
 
@@ -31,8 +40,12 @@
           <div class="brand-name" id="brandName">PUB JUKEBOX</div>
         </div>
       </div>
-      <button class="btn secondary compact" id="logoutButton" type="button">Odhlásit</button>
+      <div class="controls">
+        <button class="btn secondary compact hidden" type="button" data-install-app>Nainstalovat bez lišty</button>
+        <button class="btn secondary compact" id="logoutButton" type="button">Odhlásit</button>
+      </div>
     </header>
+    <div class="status hidden" data-install-note></div>
 
     <div class="admin-grid">
       <aside class="panel sticky">
@@ -91,7 +104,7 @@
             <div class="mode-picker audio-picker">
               <label class="mode-option">
                 <input type="radio" name="transitionMode" value="scratch" checked>
-                <span><strong>Živý DJ mix</strong><small>5 různých přechodů bez opakování za sebou</small></span>
+                <span><strong>Živý DJ mix</strong><small>Skladbu ukončí před tichem a střídá 5 různých přechodů</small></span>
               </label>
               <label class="mode-option">
                 <input type="radio" name="transitionMode" value="none">
@@ -197,6 +210,7 @@
       </section>
     </div>
   </main>
+  <script src="/static/install.js" defer></script>
   <script src="/static/admin.js" defer></script>
 </body>
 </html>

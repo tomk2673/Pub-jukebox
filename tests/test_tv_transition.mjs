@@ -40,6 +40,9 @@ for (const variant of variants) {
   metrics.push({ id: variant.id, duration_ms: Math.round(variant.duration * 1000), peak: Number(peak.toFixed(3)), rms: Number(rms.toFixed(3)) });
 }
 
+assert.match(source, /remaining > DJ_OUTRO_LEAD_SECONDS/, "TV musí spustit mix ještě před tichem na konci klipu");
+assert.match(source, /makeSureNextSongExists/, "TV musí před přechodem zajistit další skladbu");
+
 const rotation = Array.from({ length: 15 }, () => sandbox.chooseTransitionVariant(random).id);
 assert.equal(new Set(rotation).size, variants.length, "Rotace musí použít všechny varianty");
 for (let index = 1; index < rotation.length; index += 1) {

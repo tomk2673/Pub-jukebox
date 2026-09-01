@@ -41,7 +41,6 @@ USE_SUPABASE = bool(SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY and JUKEBOX_DB_SEC
 BAR_NAME = os.getenv("BAR_NAME", "PUB JUKEBOX")
 VENUE_KEY = re.sub(r"[^a-z0-9-]", "-", os.getenv("VENUE_KEY", "ztraceny-bar").lower()).strip("-")[:64] or "venue"
 DEFAULT_MENU_TEXT = os.getenv("DEFAULT_MENU_TEXT", "").strip()
-PRIORITY_PRICE_CZK = max(0, int(os.getenv("PRIORITY_PRICE_CZK", "5")))
 MAX_QUEUE_LENGTH = max(5, int(os.getenv("MAX_QUEUE_LENGTH", "50")))
 MAX_ACTIVE_PER_GUEST = max(1, int(os.getenv("MAX_ACTIVE_PER_GUEST", "3")))
 NIGHT_VOLUME = min(100, max(0, int(os.getenv("NIGHT_VOLUME", "55"))))
@@ -88,6 +87,21 @@ AUTO_DJ_PLAYLISTS = {
     },
 }
 DEFAULT_AUTO_DJ_PLAYLISTS = ["cz_funk", "cz_oldies", "cz_hiphop"]
+AUTO_DJ_EMERGENCY_TRACKS = {
+    "Český funk": [
+        {"video_id": "6EzMdAskU9M", "title": "J.A.R. – Bulhári", "artist": "J.A.R."},
+        {"video_id": "5Oq04M4bJ5Q", "title": "J.A.R. – Jsem pohodlný", "artist": "J.A.R."},
+        {"video_id": "8e39rbKHC5o", "title": "Monkey Business – Piece of My Life", "artist": "Monkey Business"},
+    ],
+    "České oldies": [
+        {"video_id": "Jd2p0HmgPBk", "title": "Karel Gott – Trezor", "artist": "Karel Gott"},
+        {"video_id": "Al3Ai_8otI0", "title": "Hana Zagorová – Můj čas", "artist": "Hana Zagorová"},
+    ],
+    "Český hip-hop 90/00": [
+        {"video_id": "72bGVWG55zY", "title": "PSH – Praha", "artist": "PSH"},
+        {"video_id": "4c37mtreI5E", "title": "PSH – Já to říkal", "artist": "PSH"},
+    ],
+}
 
 
 def connection() -> sqlite3.Connection:
@@ -254,7 +268,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="PUB Jukebox", version="1.5.2", lifespan=lifespan)
+app = FastAPI(title="PUB Jukebox", version="1.8.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
@@ -882,6 +896,15 @@ def guest_page(request: Request, code: str = ""):
     return response
 
 
+@app.get("/sw.js", include_in_schema=False)
+def service_worker():
+    return FileResponse(
+        STATIC / "sw.js",
+        media_type="application/javascript",
+        headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"},
+    )
+
+
 @app.get("/admin", include_in_schema=False)
 def admin_page():
     return FileResponse(STATIC / "admin.html")
@@ -907,7 +930,6 @@ def config():
     profile = venue_settings()
     return {
         "bar_name": profile["business_name"],
-        "priority_price_czk": PRIORITY_PRICE_CZK,
         "max_active_per_guest": MAX_ACTIVE_PER_GUEST,
         "search_enabled": True,
         "official_youtube_search": bool(YOUTUBE_API_KEY),
@@ -997,7 +1019,6 @@ def admin_config(request: Request):
         "audio_processor": audio_processor_status(),
         "network_lock": network_status(request),
         "join_url": join_url,
-        "priority_price_czk": PRIORITY_PRICE_CZK,
         "night_volume": NIGHT_VOLUME,
         "search_provider": "YouTube Data API" if YOUTUBE_API_KEY else "automatický záložní vyhledávač",
         "production_secrets_ready": SECRET_KEY != b"dev-only-change-me" and ADMIN_PIN != "2673",
@@ -1107,6 +1128,19 @@ def add_to_queue(song: Song, request: Request):
             """,
             (video_id, title, artist, thumbnail, requested_by, requester, now()),
         )
+        if current_song(conn) is None:
+            next_row = conn.execute(
+                """
+                SELECT id FROM queue WHERE status='queued'
+                ORDER BY priority DESC, votes DESC, id ASC LIMIT 1
+                """
+            ).fetchone()
+            if next_row:
+                conn.execute(
+                    "UPDATE queue SET status='playing', started_at=? WHERE id=?",
+                    (now(), next_row["id"]),
+                )
+                bump_player(conn, "load")
         row = dict(conn.execute("SELECT * FROM queue WHERE id=?", (cursor.lastrowid,)).fetchone())
         conn.commit()
     row.pop("requester_id", None)
@@ -1140,48 +1174,6 @@ def vote(song_id: int, request: Request):
         conn.execute("UPDATE queue SET votes=votes+1 WHERE id=?", (song_id,))
         conn.commit()
     return {"ok": True}
-
-
-@app.post("/api/queue/{song_id}/priority")
-def priority(song_id: int, request: Request):
-    require_admin(request)
-    if USE_SUPABASE:
-        return db_rpc("priority", {"song_id": song_id})
-    with connection() as conn:
-        changed = conn.execute(
-            """
-            UPDATE queue SET priority=priority+1, priority_requested=0
-            WHERE id=? AND status='queued'
-            """,
-            (song_id,),
-        ).rowcount
-        if not changed:
-            raise HTTPException(404, "Skladba už není ve frontě.")
-        bump_player(conn, "sync")
-        conn.commit()
-    return {"ok": True}
-
-
-@app.post("/api/queue/{song_id}/priority-request")
-def request_priority(song_id: int, request: Request):
-    requester = require_guest(request)
-    if requester == "admin":
-        raise HTTPException(400, "Admin může přednost potvrdit rovnou.")
-    if USE_SUPABASE:
-        db_rpc("priority_request", {"song_id": song_id, "requester_id": requester})
-        return {"ok": True, "message": f"Zaplať {PRIORITY_PRICE_CZK} Kč u baru. Obsluha pak přednost potvrdí."}
-    with connection() as conn:
-        changed = conn.execute(
-            """
-            UPDATE queue SET priority_requested=1
-            WHERE id=? AND requester_id=? AND status='queued' AND priority=0
-            """,
-            (song_id, requester),
-        ).rowcount
-        if not changed:
-            raise HTTPException(404, "Přednost lze vyžádat jen pro vlastní skladbu ve frontě.")
-        conn.commit()
-    return {"ok": True, "message": f"Zaplať {PRIORITY_PRICE_CZK} Kč u baru. Obsluha pak přednost potvrdí."}
 
 
 @app.post("/api/queue/{song_id}/play")
@@ -1269,9 +1261,20 @@ def prepare_autodj(request: Request):
     if not program:
         return {"enabled": True, "prepared": False, "reason": "no_playlist"}
     playlist_label, query = program
-    results, provider = search_youtube_catalog(query, 10, fallback_first=True)
+    try:
+        results, provider = search_youtube_catalog(query, 10, fallback_first=True)
+    except HTTPException:
+        results, provider = [], "nouzový zásobník"
+    emergency = [
+        {
+            **song,
+            "thumbnail": f"https://i.ytimg.com/vi/{song['video_id']}/mqdefault.jpg",
+        }
+        for song in AUTO_DJ_EMERGENCY_TRACKS.get(playlist_label, [])
+    ]
+    candidates = [*results, *emergency]
     recent = set(status.get("recent_video_ids") or [])
-    for song in results:
+    for song in candidates:
         if song.get("video_id") in recent:
             continue
         prepared = insert_autodj_candidate(song, playlist_label)
