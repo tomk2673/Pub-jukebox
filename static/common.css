@@ -158,6 +158,12 @@ h2 { margin-bottom: 16px; font-size: clamp(23px, 4vw, 34px); letter-spacing: -0.
 .big-number { font-size: clamp(60px, 12vw, 104px); font-weight: 950; line-height: 0.9; letter-spacing: -0.07em; color: var(--cyan); }
 
 .search-panel { margin-bottom: 18px; }
+.discovery-panel { margin-bottom: 18px; }
+.discovery-tabs { display: flex; gap: 7px; overflow-x: auto; padding: 1px 1px 7px; scrollbar-width: none; }
+.discovery-tabs::-webkit-scrollbar { display: none; }
+.discovery-tabs .btn { flex: 0 0 auto; }
+.discovery-tabs .btn.active { color: #111; border-color: transparent; background: var(--amber); }
+.discover-results { max-height: 460px; overflow-y: auto; overscroll-behavior: contain; }
 .search-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
 .search-kind { display: inline-grid; grid-template-columns: repeat(2,auto); gap: 6px; margin: 0 0 12px; padding: 4px; border: 1px solid var(--line); border-radius: 12px; }
 .search-kind label { cursor: pointer; }

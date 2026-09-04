@@ -87,6 +87,32 @@ AUTO_DJ_PLAYLISTS = {
     },
 }
 DEFAULT_AUTO_DJ_PLAYLISTS = ["cz_funk", "cz_oldies", "cz_hiphop"]
+DISCOVERY_QUERIES = {
+    "cz_funk": "český funk J.A.R. Monkey Business Roman Holý",
+    "cz_oldies": "české oldies Karel Gott Hana Zagorová Marie Rottrová Olympic",
+    "cz_hiphop": "starý český hip hop PSH Indy Wich Chaozz",
+}
+NON_MUSIC_TERMS = (
+    "podcast",
+    "rozhovor",
+    "interview",
+    "trailer",
+    "teaser",
+    "celý film",
+    "full movie",
+    "epizoda",
+    "episode",
+    "seriál",
+    "tv show",
+    "talk show",
+    "dokument",
+    "documentary",
+    "zprávy",
+    "news",
+    "gameplay",
+    "recenze",
+    "review",
+)
 AUTO_DJ_EMERGENCY_TRACKS = {
     "Český funk": [
         {"video_id": "6EzMdAskU9M", "title": "J.A.R. – Bulhári", "artist": "J.A.R."},
@@ -268,7 +294,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="PUB Jukebox", version="1.8.0", lifespan=lifespan)
+app = FastAPI(title="PUB Jukebox", version="1.9.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
@@ -725,6 +751,49 @@ def queue_rows(request: Request | None = None) -> list[dict]:
             (voter or "", voter or ""),
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def popular_songs(limit: int = 12) -> list[dict]:
+    limit = min(20, max(1, limit))
+    if USE_SUPABASE:
+        result = db_rpc("popular", {"limit": limit})
+        return result if isinstance(result, list) else []
+    with connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT video_id, MAX(title) AS title, MAX(artist) AS artist,
+                   MAX(thumbnail) AS thumbnail, COUNT(*) AS play_count,
+                   MAX(id) AS last_played
+            FROM queue
+            WHERE status='done' AND requester_id <> 'autodj'
+            GROUP BY video_id
+            ORDER BY play_count DESC, last_played DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def discovery_fallback(category: str | None = None) -> list[dict]:
+    labels = (
+        [AUTO_DJ_PLAYLISTS[category]["label"]]
+        if category in DISCOVERY_QUERIES
+        else [AUTO_DJ_PLAYLISTS[key]["label"] for key in DEFAULT_AUTO_DJ_PLAYLISTS]
+    )
+    return [
+        {
+            **song,
+            "thumbnail": f"https://i.ytimg.com/vi/{song['video_id']}/mqdefault.jpg",
+        }
+        for label in labels
+        for song in AUTO_DJ_EMERGENCY_TRACKS.get(label, [])
+    ]
+
+
+def is_music_candidate(song: dict) -> bool:
+    text = f"{song.get('title', '')} {song.get('artist', '')}".casefold()
+    return not any(term in text for term in NON_MUSIC_TERMS)
 
 
 def current_song(conn: sqlite3.Connection) -> sqlite3.Row | None:
@@ -1199,11 +1268,31 @@ def play(song_id: int, request: Request):
 
 @app.delete("/api/queue/{song_id}")
 def remove_song(song_id: int, request: Request):
-    require_admin(request)
+    admin = is_admin(request)
+    requester = "admin" if admin else require_guest(request)
     if USE_SUPABASE:
-        return db_rpc("remove", {"song_id": song_id})
+        action = "remove" if admin else "guest_remove"
+        payload = {"song_id": song_id}
+        if not admin:
+            payload["requester_id"] = requester
+        return db_rpc(action, payload)
     with connection() as conn:
-        existing = conn.execute("SELECT status FROM queue WHERE id=?", (song_id,)).fetchone()
+        existing = conn.execute(
+            "SELECT status, requester_id FROM queue WHERE id=?", (song_id,)
+        ).fetchone()
+        if not admin:
+            if (
+                not existing
+                or existing["status"] != "queued"
+                or existing["requester_id"] != requester
+            ):
+                raise HTTPException(404, "Zrušit můžeš jen vlastní čekající skladbu.")
+            conn.execute(
+                "UPDATE queue SET status='removed', finished_at=? WHERE id=?",
+                (now(), song_id),
+            )
+            conn.commit()
+            return {"ok": True}
         if not existing or existing["status"] not in {"queued", "playing"}:
             raise HTTPException(404, "Skladba už není ve frontě.")
         conn.execute(
@@ -1351,12 +1440,17 @@ def resolve_video(request: Request, url: str = Query(min_length=1, max_length=50
         )
         response.raise_for_status()
         data = response.json()
-        return {
+        song = {
             "video_id": video_id,
             "title": clean_text(data.get("title", video_id), 160),
             "artist": clean_text(data.get("author_name", ""), 100),
             "thumbnail": data.get("thumbnail_url", ""),
         }
+        if not is_music_candidate(song):
+            raise HTTPException(422, "Jukebox přijímá jen hudbu, ne pořady, filmy ani podcasty.")
+        return song
+    except HTTPException:
+        raise
     except (httpx.HTTPError, ValueError):
         return {
             "video_id": video_id,
@@ -1373,6 +1467,7 @@ def official_youtube_search(query: str, limit: int) -> list[dict]:
             "part": "snippet",
             "q": query,
             "type": "video",
+            "videoCategoryId": "10",
             "maxResults": limit,
             "safeSearch": "moderate",
             "videoEmbeddable": "true",
@@ -1388,14 +1483,14 @@ def official_youtube_search(query: str, limit: int) -> list[dict]:
         video_id = item.get("id", {}).get("videoId", "")
         snippet = item.get("snippet", {})
         if VIDEO_ID_RE.fullmatch(video_id):
-            results.append(
-                {
-                    "video_id": video_id,
-                    "title": clean_text(snippet.get("title", ""), 160),
-                    "artist": clean_text(snippet.get("channelTitle", ""), 100),
-                    "thumbnail": snippet.get("thumbnails", {}).get("medium", {}).get("url", ""),
-                }
-            )
+            song = {
+                "video_id": video_id,
+                "title": clean_text(snippet.get("title", ""), 160),
+                "artist": clean_text(snippet.get("channelTitle", ""), 100),
+                "thumbnail": snippet.get("thumbnails", {}).get("medium", {}).get("url", ""),
+            }
+            if is_music_candidate(song):
+                results.append(song)
     return results
 
 
@@ -1412,21 +1507,23 @@ def fallback_youtube_search(query: str, limit: int) -> list[dict]:
         "noplaylist": True,
     }
     with YoutubeDL(options) as ydl:
-        data = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
+        data = ydl.extract_info(f"ytsearch{max(limit * 2, 10)}:{query} music", download=False)
     results = []
     for item in (data or {}).get("entries", []):
         video_id = str(item.get("id", ""))
         if not VIDEO_ID_RE.fullmatch(video_id):
             continue
         thumbnail = item.get("thumbnail") or f"https://i.ytimg.com/vi/{video_id}/mqdefault.jpg"
-        results.append(
-            {
-                "video_id": video_id,
-                "title": clean_text(item.get("title", video_id), 160),
-                "artist": clean_text(item.get("channel") or item.get("uploader") or "", 100),
-                "thumbnail": thumbnail if str(thumbnail).startswith("https://") else "",
-            }
-        )
+        song = {
+            "video_id": video_id,
+            "title": clean_text(item.get("title", video_id), 160),
+            "artist": clean_text(item.get("channel") or item.get("uploader") or "", 100),
+            "thumbnail": thumbnail if str(thumbnail).startswith("https://") else "",
+        }
+        if is_music_candidate(song):
+            results.append(song)
+        if len(results) >= limit:
+            break
     return results
 
 
@@ -1489,3 +1586,29 @@ def search_videos(
         query = clean_text(f"{clean_text(query, 92)} {LYRICS_SEARCH_SUFFIX}", 100)
     results, provider = search_youtube_catalog(query, limit)
     return {"items": results, "provider": provider, "mode": mode}
+
+
+@app.get("/api/discover")
+def discover_songs(
+    request: Request,
+    category: Literal["popular", "cz_funk", "cz_oldies", "cz_hiphop"] = Query(default="popular"),
+):
+    require_guest(request)
+    fallback = discovery_fallback(None if category == "popular" else category)
+    if category == "popular":
+        history = [song for song in popular_songs(12) if is_music_candidate(song)]
+        seen = {song.get("video_id") for song in history}
+        items = [*history, *(song for song in fallback if song["video_id"] not in seen)][:12]
+        return {
+            "items": items,
+            "category": category,
+            "source": "historie baru" if history else "výběr baru",
+        }
+
+    try:
+        found, provider = search_youtube_catalog(DISCOVERY_QUERIES[category], 10)
+    except HTTPException:
+        found, provider = [], "výběr baru"
+    seen = {song.get("video_id") for song in found}
+    items = [*found, *(song for song in fallback if song["video_id"] not in seen)][:12]
+    return {"items": items, "category": category, "source": provider}

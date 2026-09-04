@@ -12,8 +12,8 @@ async function api(path, options = {}) {
   return data;
 }
 
-function setStatus(text = "", type = "") {
-  const el = $("searchStatus");
+function setStatus(text = "", type = "", target = "searchStatus") {
+  const el = $(target);
   el.textContent = text;
   el.className = `status ${type}`.trim();
 }
@@ -35,8 +35,8 @@ function songCopy(song) {
   return copy;
 }
 
-function renderResults(items) {
-  const root = $("results");
+function renderResults(items, target = "results", statusTarget = "searchStatus") {
+  const root = $(target);
   root.replaceChildren();
   items.forEach((song) => {
     const card = document.createElement("article");
@@ -50,7 +50,7 @@ function renderResults(items) {
     button.className = "btn compact";
     button.type = "button";
     button.textContent = "+ Do fronty";
-    button.addEventListener("click", () => addSong(song, button));
+    button.addEventListener("click", () => addSong(song, button, statusTarget));
     card.append(img, songCopy(song), button);
     root.append(card);
   });
@@ -102,6 +102,15 @@ function renderQueue() {
       vote.addEventListener("click", () => voteSong(song.id, vote));
       actions.append(vote);
     }
+    if (song.requested_by_me && !automatic) {
+      const cancel = document.createElement("button");
+      cancel.className = "btn danger compact";
+      cancel.type = "button";
+      cancel.textContent = "Zrušit";
+      cancel.setAttribute("aria-label", `Zrušit skladbu ${song.title}`);
+      cancel.addEventListener("click", () => cancelSong(song.id, song.title, cancel));
+      actions.append(cancel);
+    }
     card.append(position, songCopy(song), actions);
     root.append(card);
   });
@@ -147,19 +156,33 @@ async function search(event) {
   }
 }
 
-async function addSong(song, button) {
+async function loadDiscovery(category = "popular") {
+  const buttons = [...document.querySelectorAll("[data-discovery]")];
+  buttons.forEach((button) => button.classList.toggle("active", button.dataset.discovery === category));
+  setStatus("Načítám výběr…", "", "discoverStatus");
+  $("discoverResults").replaceChildren();
+  try {
+    const data = await api(`/api/discover?category=${encodeURIComponent(category)}`);
+    renderResults(data.items, "discoverResults", "discoverStatus");
+    setStatus(`${data.items.length} tipů · ${data.source}`, "success", "discoverStatus");
+  } catch (error) {
+    setStatus(error.message, "error", "discoverStatus");
+  }
+}
+
+async function addSong(song, button, statusTarget = "searchStatus") {
   const requestedBy = localStorage.getItem("jukebox_name") || "";
   button.disabled = true;
   button.textContent = "Přidávám…";
   try {
     await api("/api/queue", { method: "POST", body: JSON.stringify({ ...song, requested_by: requestedBy }) });
     button.textContent = "✓ Ve frontě";
-    setStatus("Skladba je ve frontě.", "success");
+    setStatus("Skladba je ve frontě.", "success", statusTarget);
     await loadQueue(true);
   } catch (error) {
     button.disabled = false;
     button.textContent = "+ Do fronty";
-    setStatus(error.message, "error");
+    setStatus(error.message, "error", statusTarget);
   }
 }
 
@@ -174,14 +197,32 @@ async function voteSong(id, button) {
   }
 }
 
+async function cancelSong(id, title, button) {
+  if (!window.confirm(`Opravdu zrušit „${title}“?`)) return;
+  button.disabled = true;
+  button.textContent = "Ruším…";
+  try {
+    await api(`/api/queue/${id}`, { method: "DELETE" });
+    setStatus("Skladba byla z fronty zrušena.", "success");
+    await loadQueue(true);
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = "Zrušit";
+    setStatus(error.message, "error");
+  }
+}
+
 async function boot() {
   $("searchForm").addEventListener("submit", search);
   $("refreshButton").addEventListener("click", () => loadQueue());
+  document.querySelectorAll("[data-discovery]").forEach((button) => {
+    button.addEventListener("click", () => loadDiscovery(button.dataset.discovery));
+  });
   try {
     state.config = await api("/api/config");
     $("brandName").textContent = state.config.bar_name;
   } catch (_) {}
-  await loadQueue();
+  await Promise.all([loadQueue(), loadDiscovery()]);
   setInterval(() => loadQueue(true), 3000);
 }
 

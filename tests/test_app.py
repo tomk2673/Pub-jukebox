@@ -55,7 +55,7 @@ def test_guest_search_add_and_duplicate_protection(tmp_path, monkeypatch):
         public_song = client.get("/api/queue").json()[0]
         assert public_song["requested_by_me"] == 1
         assert "requester_id" not in public_song
-        assert public_song["status"] == "queued"
+        assert public_song["status"] == "playing"
         assert client.post(f"/api/queue/{public_song['id']}/priority-request").status_code == 404
 
 
@@ -71,7 +71,110 @@ def test_one_vote_per_device_and_queue_order(tmp_path, monkeypatch):
             assert voter.post(f"/api/queue/{song_b['id']}/vote").status_code == 409
 
         queue = owner.get("/api/queue").json()
-        assert [song["id"] for song in queue] == [song_b["id"], song_a["id"]]
+        assert [song["id"] for song in queue] == [song_a["id"], song_b["id"]]
+        assert queue[0]["status"] == "playing"
+        assert queue[1]["votes"] == 1
+
+
+def test_guest_can_cancel_only_own_waiting_song(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as owner:
+        join(owner)
+        playing = add(owner, VIDEO_A, "Already playing").json()
+        waiting = add(owner, VIDEO_B, "Wrong selection").json()
+
+        assert owner.delete(f"/api/queue/{playing['id']}").status_code == 404
+
+        with TestClient(jukebox.app) as stranger:
+            join(stranger)
+            forbidden = stranger.delete(f"/api/queue/{waiting['id']}")
+            assert forbidden.status_code == 404
+
+        removed = owner.delete(f"/api/queue/{waiting['id']}")
+        assert removed.status_code == 200
+        assert all(song["id"] != waiting["id"] for song in owner.get("/api/queue").json())
+
+
+def test_guest_queue_shows_cancel_only_for_own_waiting_song(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        join(client)
+        script = client.get("/static/guest.js")
+        assert script.status_code == 200
+        assert "song.requested_by_me && !automatic" in script.text
+        assert 'method: "DELETE"' in script.text
+
+
+def test_discovery_learns_popular_tracks_and_ignores_autodj(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        assert client.get("/api/discover").status_code == 401
+        join(client)
+        with jukebox.connection() as conn:
+            for video_id, title, requester in [
+                (VIDEO_A, "Bar favorite", "guest-a"),
+                (VIDEO_A, "Bar favorite", "guest-b"),
+                (VIDEO_B, "Second favorite", "guest-c"),
+                (VIDEO_C, "Automatic track", "autodj"),
+            ]:
+                conn.execute(
+                    """
+                    INSERT INTO queue(video_id,title,artist,requester_id,status,created_at,finished_at)
+                    VALUES(?,?,?,?,'done',?,?)
+                    """,
+                    (video_id, title, "Test artist", requester, jukebox.now(), jukebox.now()),
+                )
+            conn.commit()
+
+        response = client.get("/api/discover?category=popular")
+        assert response.status_code == 200
+        items = response.json()["items"]
+        assert items[0]["video_id"] == VIDEO_A
+        assert items[0]["play_count"] == 2
+        assert items[1]["video_id"] == VIDEO_B
+        assert VIDEO_C not in [item["video_id"] for item in items[:2]]
+
+
+def test_discovery_ui_has_one_tap_music_lists(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        join(client)
+        page = client.get("/guest")
+        script = client.get("/static/guest.js")
+        assert "Oblíbené v baru" in page.text
+        assert "Český funk" in page.text
+        assert "Oldies" in page.text
+        assert "Starý hip-hop" in page.text
+        assert "/api/discover?category=" in script.text
+        assert 'renderResults(data.items, "discoverResults"' in script.text
+
+
+def test_music_filter_rejects_shows_films_and_podcasts():
+    assert jukebox.is_music_candidate({"title": "Monkey Business - Piece of My Life", "artist": "Official"})
+    for title in [
+        "Celý film online",
+        "Nový podcast epizoda 12",
+        "TV show interview",
+        "Gameplay review",
+        "Dokumentární trailer",
+    ]:
+        assert not jukebox.is_music_candidate({"title": title, "artist": "Channel"})
+
+
+def test_official_youtube_search_requests_music_category(monkeypatch):
+    captured = {}
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"items": []}
+
+    def fake_get(url, params, timeout):
+        captured.update(params)
+        return Response()
+
+    monkeypatch.setattr(jukebox.httpx, "get", fake_get)
+    jukebox.official_youtube_search("test", 8)
+    assert captured["type"] == "video"
+    assert captured["videoCategoryId"] == "10"
 
 
 def test_guest_song_needs_no_admin_approval(tmp_path, monkeypatch):
@@ -151,7 +254,7 @@ def test_guest_mobile_layout_blocks_horizontal_overscroll(tmp_path, monkeypatch)
         assert "overscroll-behavior-x: none" in style.text
         assert "touch-action: pan-y pinch-zoom" in style.text
         assert ".guest-app .results .song-card > .btn" in style.text
-        assert 'pub-jukebox-v8' in worker.text
+        assert 'pub-jukebox-v11' in worker.text
 
 
 def test_all_surfaces_install_fullscreen_on_phone_and_computer(tmp_path, monkeypatch):
@@ -187,7 +290,7 @@ def test_all_surfaces_install_fullscreen_on_phone_and_computer(tmp_path, monkeyp
         assert worker.status_code == 200
         assert worker.headers["service-worker-allowed"] == "/"
         assert "no-cache" in worker.headers["cache-control"]
-        assert 'pub-jukebox-v8' in worker.text
+        assert 'pub-jukebox-v11' in worker.text
         assert "/static/admin.webmanifest" in worker.text
         assert "/static/tv.webmanifest" in worker.text
         assert 'register("/sw.js", { scope: "/" })' in installer.text
