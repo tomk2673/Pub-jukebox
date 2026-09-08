@@ -1,10 +1,14 @@
 const $ = (id) => document.getElementById(id);
-let player = null;
+
 let authenticated = false;
 let apiReady = false;
-let playerReady = false;
+let deckReady = [false, false];
+let players = [null, null];
+let activeDeck = 0;
 let currentVideo = null;
 let currentSong = null;
+let queuedNextVideo = null;
+let deckVideos = [null, null];
 let lastRevision = -1;
 let displayRevision = -1;
 let displayMode = "clip";
@@ -22,8 +26,10 @@ let nextAutoDjAttempt = 0;
 let outroTriggeredVideo = null;
 let outroCheckBusy = false;
 
-const DJ_OUTRO_LEAD_SECONDS = 7.5;
-const DJ_FADE_OUT_MS = 1350;
+const MIX_LEAD_SECONDS = 9.0;
+const DJ_OUTRO_LEAD_SECONDS = MIX_LEAD_SECONDS;
+const MIX_DURATION_MS = 5200;
+const MIX_STEPS = 52;
 
 const TRANSITION_VARIANTS = Object.freeze([
   Object.freeze({ id: "backspin", label: "DJ BACKSPIN", duration: 0.92 }),
@@ -90,14 +96,12 @@ function synthesizeTransitionSamples(sampleRate, variant = TRANSITION_VARIANTS[0
     const envelope = Math.sin(Math.PI * progress) ** 0.62;
     const noise = random() * 2 - 1;
     let signal = 0;
-
     if (selected.id === "chirp") {
       const stroke = (progress * 5) % 1;
       const direction = Math.floor(progress * 5) % 2 === 0 ? 1 : -0.72;
       const frequency = 680 + 2050 * (direction > 0 ? stroke : 1 - stroke);
       phase += direction * 2 * Math.PI * frequency / sampleRate;
-      const cut = Math.sin(Math.PI * stroke) ** 1.6;
-      signal = (Math.sin(phase) + noise * 0.2) * cut * envelope * 0.48;
+      signal = (Math.sin(phase) + noise * 0.2) * Math.sin(Math.PI * stroke) ** 1.6 * envelope * 0.48;
     } else if (selected.id === "transformer") {
       const slice = (progress * 9) % 1;
       const frequency = 540 + 760 * (1 - progress) + 110 * Math.sin(time * 34);
@@ -107,28 +111,21 @@ function synthesizeTransitionSamples(sampleRate, variant = TRANSITION_VARIANTS[0
     } else if (selected.id === "tape-stop") {
       const frequency = 1180 * (1 - progress) ** 3.2 + 82;
       phase += 2 * Math.PI * frequency / sampleRate;
-      const wobble = 0.76 + 0.24 * Math.sin(2 * Math.PI * (6 + progress * 8) * time);
-      signal = (Math.sin(phase) + 0.3 * Math.sin(phase * 0.48) + noise * 0.13) * envelope * wobble * (1 - 0.3 * progress) * 0.5;
+      signal = (Math.sin(phase) + 0.3 * Math.sin(phase * 0.48) + noise * 0.13) * envelope * (1 - 0.3 * progress) * 0.5;
     } else if (selected.id === "vinyl-flip") {
       const stroke = (progress * 6) % 1;
       const reverse = Math.floor(progress * 6) % 2 === 1;
       const frequency = 760 + 1280 * Math.sin(Math.PI * stroke) ** 2;
       phase += (reverse ? -0.78 : 1) * 2 * Math.PI * frequency / sampleRate;
-      const handCut = 0.24 + 0.76 * Math.sin(Math.PI * stroke) ** 0.8;
-      signal = (Math.sin(phase) + 0.34 * Math.sin(phase * 0.53) + noise * 0.17) * envelope * handCut * 0.46;
+      signal = (Math.sin(phase) + noise * 0.17) * envelope * 0.46;
     } else {
       const frequency = 1450 * (1 - progress) ** 2 + 115;
       phase += 2 * Math.PI * frequency / sampleRate;
-      const handMotion = 0.38 + 0.62 * Math.abs(Math.sin(2 * Math.PI * (7.5 - 3.2 * progress) * time));
-      signal = (Math.sin(phase) + 0.32 * Math.sin(phase * 0.51) + noise * 0.28) * envelope * handMotion * 0.46;
+      signal = (Math.sin(phase) + 0.32 * Math.sin(phase * 0.51) + noise * 0.28) * envelope * 0.46;
     }
     samples[frame] = signal;
   }
   return samples;
-}
-
-function synthesizeScratchSamples(sampleRate, duration = 0.92, random = Math.random) {
-  return synthesizeTransitionSamples(sampleRate, { ...TRANSITION_VARIANTS[0], duration }, random);
 }
 
 async function playScratchTransition() {
@@ -143,9 +140,7 @@ async function playScratchTransition() {
     const start = context.currentTime + 0.015;
     const transitionSamples = synthesizeTransitionSamples(context.sampleRate, variant);
     const buffer = context.createBuffer(1, transitionSamples.length, context.sampleRate);
-    const samples = buffer.getChannelData(0);
-    samples.set(transitionSamples);
-
+    buffer.getChannelData(0).set(transitionSamples);
     const source = context.createBufferSource();
     const highpass = context.createBiquadFilter();
     const lowpass = context.createBiquadFilter();
@@ -161,7 +156,7 @@ async function playScratchTransition() {
     compressor.ratio.value = 10;
     compressor.attack.value = 0.002;
     compressor.release.value = 0.08;
-    const peakGain = Math.min(0.55, transitionVolume / 100 * effectiveVolume / 100 * 0.58);
+    const peakGain = Math.min(0.45, transitionVolume / 100 * effectiveVolume / 100 * 0.48);
     gain.gain.setValueAtTime(0.0001, start);
     gain.gain.exponentialRampToValueAtTime(Math.max(0.001, peakGain), start + 0.045);
     gain.gain.setValueAtTime(Math.max(0.001, peakGain), start + variant.duration * 0.7);
@@ -173,14 +168,37 @@ async function playScratchTransition() {
   view.classList.add("hidden");
 }
 
-async function fadePlayerVolume(from, to, durationMs) {
-  if (!playerReady || !player) return;
-  const steps = Math.max(1, Math.round(durationMs / 75));
-  for (let step = 1; step <= steps; step += 1) {
-    const progress = step / steps;
-    player.setVolume(Math.round(from + (to - from) * progress));
-    await new Promise((resolve) => setTimeout(resolve, durationMs / steps));
-  }
+function inactiveDeck() {
+  return activeDeck === 0 ? 1 : 0;
+}
+
+function deckElement(index) {
+  return document.getElementById(index === 0 ? "playerA" : "playerB");
+}
+
+function styleDeck(index, opacity = null) {
+  const el = deckElement(index);
+  if (!el) return;
+  el.style.position = "absolute";
+  el.style.inset = "0";
+  el.style.width = "100%";
+  el.style.height = "100%";
+  el.style.border = "0";
+  el.style.pointerEvents = "none";
+  el.style.zIndex = index === activeDeck ? "2" : "1";
+  el.style.opacity = opacity === null ? (index === activeDeck ? "1" : "0") : String(opacity);
+}
+
+function setDeckVisibility() {
+  styleDeck(0);
+  styleDeck(1);
+}
+
+function setAllDeckVolumes() {
+  players.forEach((deck, index) => {
+    if (!deckReady[index] || !deck) return;
+    deck.setVolume(index === activeDeck ? effectiveVolume : 0);
+  });
 }
 
 async function queuedSongs() {
@@ -196,42 +214,104 @@ async function makeSureNextSongExists() {
   return queued;
 }
 
+async function preloadNextSong() {
+  if (!deckReady.every(Boolean) || transitioning) return null;
+  const queued = await makeSureNextSongExists();
+  const next = queued[0] || null;
+  if (!next) {
+    queuedNextVideo = null;
+    return null;
+  }
+  const target = inactiveDeck();
+  if (deckVideos[target] !== next.video_id) {
+    players[target].cueVideoById(next.video_id);
+    players[target].setVolume(0);
+    deckVideos[target] = next.video_id;
+  }
+  queuedNextVideo = next.video_id;
+  return next;
+}
+
+function equalPowerVolumes(progress, master) {
+  const p = Math.min(1, Math.max(0, progress));
+  return {
+    outgoing: Math.round(Math.cos(p * Math.PI / 2) * master),
+    incoming: Math.round(Math.sin(p * Math.PI / 2) * master),
+  };
+}
+
+async function crossfadeDecks(outgoing, incoming, durationMs = MIX_DURATION_MS) {
+  const stepMs = durationMs / MIX_STEPS;
+  const outgoingEl = deckElement(outgoing);
+  const incomingEl = deckElement(incoming);
+  if (incomingEl) incomingEl.style.zIndex = "3";
+  for (let step = 0; step <= MIX_STEPS; step += 1) {
+    const progress = step / MIX_STEPS;
+    const { outgoing: outVol, incoming: inVol } = equalPowerVolumes(progress, effectiveVolume);
+    players[outgoing]?.setVolume(outVol);
+    players[incoming]?.setVolume(inVol);
+    if (incomingEl) incomingEl.style.opacity = String(Math.min(1, progress * 1.35));
+    if (outgoingEl) outgoingEl.style.opacity = String(Math.max(0.15, 1 - progress * 0.85));
+    await new Promise((resolve) => setTimeout(resolve, stepMs));
+  }
+}
+
 async function finishCurrentSong(earlyMix = false) {
   if (transitioning) return;
   transitioning = true;
+  const outgoing = activeDeck;
+  const incoming = inactiveDeck();
   try {
     const queued = await makeSureNextSongExists();
-    if (queued.length) {
-      if (earlyMix) {
-        await Promise.all([
-          fadePlayerVolume(effectiveVolume, Math.min(8, effectiveVolume), DJ_FADE_OUT_MS),
-          playScratchTransition(),
-        ]);
-      } else {
-        await playScratchTransition();
-      }
+    const next = queued[0] || null;
+    if (!next) {
+      await api("/api/player/ended", { method: "POST" });
+      players[outgoing]?.stopVideo();
+      deckVideos[outgoing] = null;
+      currentVideo = null;
+      return;
     }
+    if (deckVideos[incoming] !== next.video_id) {
+      players[incoming].cueVideoById(next.video_id);
+      players[incoming].setVolume(0);
+      deckVideos[incoming] = next.video_id;
+    }
+    players[incoming].playVideo();
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    const mixPromise = crossfadeDecks(outgoing, incoming, earlyMix ? MIX_DURATION_MS : 2600);
+    const fxPromise = transitionMode === "scratch" ? playScratchTransition() : Promise.resolve();
+    await Promise.all([mixPromise, fxPromise]);
+    players[outgoing]?.pauseVideo();
+    players[outgoing]?.setVolume(0);
+    activeDeck = incoming;
+    currentVideo = next.video_id;
+    queuedNextVideo = null;
+    outroTriggeredVideo = null;
+    setDeckVisibility();
     await api("/api/player/ended", { method: "POST" });
+    players[activeDeck]?.setVolume(effectiveVolume);
   } catch (_) {
-    // Další synchronizace stav přehrávače bezpečně dorovná.
+    await api("/api/player/ended", { method: "POST" }).catch(() => null);
   } finally {
     transitioning = false;
   }
   await sync(true);
+  setTimeout(() => preloadNextSong(), 300);
 }
 
 async function monitorDjOutro() {
-  if (!playerReady || !player || transitioning || outroCheckBusy || !currentVideo) return;
-  if (player.getPlayerState() !== YT.PlayerState.PLAYING) return;
-  const duration = Number(player.getDuration?.() || 0);
-  const position = Number(player.getCurrentTime?.() || 0);
+  if (!deckReady[activeDeck] || transitioning || outroCheckBusy || !currentVideo) return;
+  const deck = players[activeDeck];
+  if (!deck || deck.getPlayerState() !== YT.PlayerState.PLAYING) return;
+  const duration = Number(deck.getDuration?.() || 0);
+  const position = Number(deck.getCurrentTime?.() || 0);
   const remaining = duration - position;
   if (duration < 30 || remaining <= 0 || remaining > DJ_OUTRO_LEAD_SECONDS) return;
   if (outroTriggeredVideo === currentVideo) return;
   outroCheckBusy = true;
   try {
-    const queued = await makeSureNextSongExists();
-    if (!queued.length) return;
+    const next = await preloadNextSong();
+    if (!next) return;
     outroTriggeredVideo = currentVideo;
     await finishCurrentSong(true);
   } finally {
@@ -241,12 +321,32 @@ async function monitorDjOutro() {
 
 window.onYouTubeIframeAPIReady = () => {
   apiReady = true;
-  if (authenticated) createPlayer();
+  if (authenticated) createPlayers();
 };
 
-function createPlayer() {
-  if (!apiReady || player) return;
-  player = new YT.Player("player", {
+function onDeckReady(index) {
+  deckReady[index] = true;
+  styleDeck(index);
+  players[index].setVolume(index === activeDeck ? effectiveVolume : 0);
+  if (!deckReady.every(Boolean)) return;
+  api("/api/player/start", { method: "POST" }).catch(() => null).finally(() => {
+    sync(true).then(() => preloadNextSong());
+  });
+}
+
+function onDeckStateChange(index, event) {
+  if (event.data === YT.PlayerState.PLAYING) $("tapToPlay").classList.add("hidden");
+  if (index === activeDeck && event.data === YT.PlayerState.ENDED && !transitioning) {
+    finishCurrentSong(false);
+  }
+}
+
+function onDeckError(index) {
+  if (index === activeDeck && !transitioning) finishCurrentSong(false);
+}
+
+function makeDeck(index, elementId) {
+  return new YT.Player(elementId, {
     width: "100%",
     height: "100%",
     playerVars: {
@@ -260,22 +360,17 @@ function createPlayer() {
       playsinline: 1,
     },
     events: {
-      onReady: async () => {
-        playerReady = true;
-        await api("/api/player/start", { method: "POST" }).catch(() => null);
-        await sync(true);
-      },
-      onStateChange: async (event) => {
-        if (event.data === YT.PlayerState.ENDED) {
-          await finishCurrentSong();
-        }
-        if (event.data === YT.PlayerState.PLAYING) $("tapToPlay").classList.add("hidden");
-      },
-      onError: async () => {
-        await finishCurrentSong(false);
-      },
+      onReady: () => onDeckReady(index),
+      onStateChange: (event) => onDeckStateChange(index, event),
+      onError: () => onDeckError(index),
     },
   });
+}
+
+function createPlayers() {
+  if (!apiReady || players[0] || players[1]) return;
+  players[0] = makeDeck(0, "playerA");
+  players[1] = makeDeck(1, "playerB");
 }
 
 function renderMenu(menuText) {
@@ -335,7 +430,6 @@ async function ensureAutoDjBuffer(state) {
       setTimeout(() => sync(true), 250);
     }
   } catch (_) {
-    // AutoDJ zkusí doplnit zásobník při další periodické kontrole.
   } finally {
     autoDjBusy = false;
   }
@@ -359,33 +453,29 @@ function showSong(song) {
 async function applyState(state, force = false) {
   const song = state.now_playing;
   showSong(song);
-  if (!playerReady) return;
+  if (!deckReady.every(Boolean)) return;
   effectiveVolume = state.night_mode ? Math.min(state.volume, nightVolume) : state.volume;
-  player.setVolume(effectiveVolume);
+  setAllDeckVolumes();
   if (song && (force || song.video_id !== currentVideo)) {
-    const changedTrack = Boolean(currentVideo && song.video_id !== currentVideo);
-    if (changedTrack && !force && transitionMode === "scratch") {
-      if (transitioning) return;
-      transitioning = true;
-      player.pauseVideo();
-      try {
-        await playScratchTransition();
-      } finally {
-        transitioning = false;
-      }
+    const target = currentVideo ? activeDeck : activeDeck;
+    if (!transitioning && deckVideos[target] !== song.video_id) {
+      currentVideo = song.video_id;
+      outroTriggeredVideo = null;
+      deckVideos[target] = song.video_id;
+      players[target].loadVideoById(song.video_id);
+      players[target].setVolume(effectiveVolume);
     }
-    currentVideo = song.video_id;
-    outroTriggeredVideo = null;
-    player.loadVideoById(song.video_id);
   } else if (!song && currentVideo) {
     currentVideo = null;
-    player.stopVideo();
+    players[activeDeck]?.stopVideo();
+    deckVideos[activeDeck] = null;
   }
   if (state.revision !== lastRevision) {
-    if (state.action === "pause") player.pauseVideo();
-    if (state.action === "resume") player.playVideo();
+    if (state.action === "pause") players[activeDeck]?.pauseVideo();
+    if (state.action === "resume") players[activeDeck]?.playVideo();
     lastRevision = state.revision;
   }
+  preloadNextSong();
 }
 
 async function sync(force = false) {
@@ -410,11 +500,11 @@ async function startTv() {
   applyDisplay(display);
   $("qr").src = `/api/admin/qr.svg?t=${Date.now()}`;
   $("loginView").classList.add("hidden");
-  createPlayer();
-  if (playerReady) {
+  createPlayers();
+  if (deckReady.every(Boolean)) {
     await api("/api/player/start", { method: "POST" });
     await sync(true);
-    player.playVideo();
+    players[activeDeck]?.playVideo();
   }
   if (navigator.wakeLock) navigator.wakeLock.request("screen").catch(() => {});
 }
@@ -436,7 +526,7 @@ async function boot() {
   $("loginForm").addEventListener("submit", login);
   $("tapToPlay").addEventListener("click", () => {
     unlockTransitionAudio();
-    if (playerReady) player.playVideo();
+    players[activeDeck]?.playVideo();
     $("tapToPlay").classList.add("hidden");
   });
   const me = await api("/api/me").catch(() => ({ admin: false }));
