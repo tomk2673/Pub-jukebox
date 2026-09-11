@@ -21,8 +21,8 @@ body { color: #fff; }
   transition: inset 300ms ease, border-radius 300ms ease, box-shadow 300ms ease;
 }
 
-#player, #player iframe { width: 100%; height: 100%; }
-iframe#player, #player iframe { pointer-events: none; }
+#player, #player iframe, #playerA, #playerB, #playerA iframe, #playerB iframe { width: 100%; height: 100%; }
+iframe#player, #player iframe, iframe#playerA, iframe#playerB { pointer-events: none; }
 .player-guard { position: absolute; inset: 0; z-index: 7; cursor: none; touch-action: none; user-select: none; }
 
 .tv-login, .idle {

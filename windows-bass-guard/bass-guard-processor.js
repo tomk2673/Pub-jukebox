@@ -79,6 +79,7 @@ class NightBassGuardProcessor extends AudioWorkletProcessor {
   constructor(options) {
     super();
     this.config = this.normalizeConfig(options.processorOptions?.config || {});
+    this.subsonicFilters = [];
     this.lowFilters = [];
     this.weightHighpass = [];
     this.weightShelf = [];
@@ -86,6 +87,7 @@ class NightBassGuardProcessor extends AudioWorkletProcessor {
     this.delaySize = Math.max(64, Math.ceil(sampleRate * 0.006));
     this.delayIndex = 0;
     this.inputValues = new Float64Array(8);
+    this.rawValues = new Float64Array(8);
     this.lowValues = new Float64Array(8);
     this.processedValues = new Float64Array(8);
     this.loudnessPower = 1e-8;
@@ -122,6 +124,7 @@ class NightBassGuardProcessor extends AudioWorkletProcessor {
 
   ensureChannels(channelCount) {
     while (this.lowFilters.length < channelCount) {
+      this.subsonicFilters.push(new Biquad().highpass(30, 0.707, sampleRate));
       this.lowFilters.push(new Biquad().lowpass(120, 0.707, sampleRate));
       this.weightHighpass.push(new Biquad().highpass(38, 0.5, sampleRate));
       this.weightShelf.push(new Biquad().highShelf(1682, 4, sampleRate));
@@ -144,9 +147,11 @@ class NightBassGuardProcessor extends AudioWorkletProcessor {
 
       for (let channel = 0; channel < channelCount; channel += 1) {
         const source = input[Math.min(channel, input.length - 1)];
-        const sample = source?.[frame] || 0;
+        const raw = source?.[frame] || 0;
+        const sample = this.config.enabled ? this.subsonicFilters[channel].process(raw) : raw;
         const low = this.lowFilters[channel].process(sample);
         const weighted = this.weightShelf[channel].process(this.weightHighpass[channel].process(sample));
+        this.rawValues[channel] = raw;
         this.inputValues[channel] = sample;
         this.lowValues[channel] = low;
         fullFramePower += sample * sample;
@@ -199,7 +204,7 @@ class NightBassGuardProcessor extends AudioWorkletProcessor {
         const delay = this.delayBuffers[channel];
         const delayed = delay[this.delayIndex];
         delay[this.delayIndex] = this.processedValues[channel];
-        output[channel][frame] = this.config.enabled ? delayed * this.limiterGain : this.inputValues[channel];
+        output[channel][frame] = this.config.enabled ? delayed * this.limiterGain : this.rawValues[channel];
       }
       this.delayIndex = (this.delayIndex + 1) % this.delaySize;
     }

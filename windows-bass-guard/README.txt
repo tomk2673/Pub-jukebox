@@ -4,6 +4,7 @@ PUB JUKEBOX · NIGHT BASS GUARD PRO (Windows + Chrome)
 Co modul dělá
 -------------
 - průběžně vyrovnává rozdílnou hlasitost skladeb,
+- odřízne neslyšitelné vibrace pod 30 Hz, které zbytečně zatěžují aparaturu,
 - dynamicky stáhne jen přebytečnou energii pod 120 Hz,
 - look-ahead limiter zachytí špičky před výstupem,
 - posílá do administrace živý stav a hodnoty zásahu.
@@ -29,4 +30,5 @@ Důležité
 - Rozšíření zachytává pouze zvuk aktuální TV karty, nikoli mikrofon.
 - Když je v administraci vybraný „Běžný výstup“, zvuk pouze bezpečně propustí.
 - Režim Bass Guard PRO se řídí hodnotami LUFS, limitu a ochrany basů v administraci.
+- Při krátkém výpadku internetu zůstane aktivní bezpečný profil −17 LUFS / −4 dB / 100 % ochrany basů.
 - Před ostrým večerem vyzkoušej profil při nižší hlasitosti a sílu basů dolaď podle aparatury.

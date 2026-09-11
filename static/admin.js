@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-const state = { config: null, player: null, queue: [], volumeTimer: null };
+const state = { config: null, player: null, queue: [], volumeTimer: null, searchBusy: false };
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -56,6 +56,79 @@ function textBlock(className, text) {
   el.className = className;
   el.textContent = text;
   return el;
+}
+
+function imageFor(song) {
+  return song.thumbnail || `https://i.ytimg.com/vi/${song.video_id}/mqdefault.jpg`;
+}
+
+function renderAdminSearchResults(items) {
+  const root = $("adminSearchResults");
+  root.replaceChildren();
+  for (const song of items) {
+    const card = document.createElement("article");
+    card.className = "song-card";
+    const img = document.createElement("img");
+    img.className = "thumb";
+    img.src = imageFor(song);
+    img.alt = "";
+    img.loading = "lazy";
+    const copy = document.createElement("div");
+    copy.className = "song-copy";
+    copy.append(
+      textBlock("song-title", song.title),
+      textBlock("song-meta", song.artist || "YouTube"),
+    );
+    const button = actionButton("+ Do fronty", "btn compact", () => addAdminSong(song, button));
+    card.append(img, copy, button);
+    root.append(card);
+  }
+}
+
+async function searchAsAdmin(event) {
+  event.preventDefault();
+  if (state.searchBusy) return;
+  const query = $("adminSearchInput").value.trim();
+  if (query.length < 2) return;
+  state.searchBusy = true;
+  $("adminSearchButton").disabled = true;
+  $("adminSearchStatus").textContent = "Hledám na YouTube…";
+  $("adminSearchResults").replaceChildren();
+  try {
+    const looksLikeUrl = /youtu(?:\.be|be\.com)/i.test(query);
+    const data = looksLikeUrl
+      ? { items: [await api(`/api/videos/resolve?url=${encodeURIComponent(query)}`)] }
+      : await api(`/api/search?q=${encodeURIComponent(query)}&limit=6`);
+    renderAdminSearchResults(data.items);
+    $("adminSearchStatus").textContent = `${data.items.length} výsledků`;
+    $("adminSearchStatus").className = "status success";
+  } catch (error) {
+    $("adminSearchStatus").textContent = error.message;
+    $("adminSearchStatus").className = "status error";
+  } finally {
+    state.searchBusy = false;
+    $("adminSearchButton").disabled = false;
+  }
+}
+
+async function addAdminSong(song, button) {
+  button.disabled = true;
+  button.textContent = "Přidávám…";
+  try {
+    await api("/api/queue", {
+      method: "POST",
+      body: JSON.stringify({ ...song, requested_by: "Obsluha" }),
+    });
+    button.textContent = "✓ Ve frontě";
+    $("adminSearchStatus").textContent = "Skladba jde rovnou do fronty.";
+    $("adminSearchStatus").className = "status success";
+    await loadAll(true);
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = "+ Do fronty";
+    $("adminSearchStatus").textContent = error.message;
+    $("adminSearchStatus").className = "status error";
+  }
 }
 
 function renderQueue() {
@@ -303,6 +376,7 @@ async function control(action, value = null) {
 
 function wireEvents() {
   $("loginForm").addEventListener("submit", login);
+  $("adminSearchForm").addEventListener("submit", searchAsAdmin);
   $("displayForm").addEventListener("submit", saveVenueSettings);
   for (const input of document.querySelectorAll('input[name="audioMode"]')) input.addEventListener("change", renderAudioValues);
   for (const input of document.querySelectorAll('input[name="transitionMode"]')) input.addEventListener("change", renderTransitionValues);

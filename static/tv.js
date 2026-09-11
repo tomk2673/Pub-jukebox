@@ -9,6 +9,8 @@ let currentVideo = null;
 let currentSong = null;
 let queuedNextVideo = null;
 let deckVideos = [null, null];
+let deckErrors = [null, null];
+let deckPlaybackWaiters = [null, null];
 let lastRevision = -1;
 let displayRevision = -1;
 let displayMode = "clip";
@@ -30,6 +32,8 @@ const MIX_LEAD_SECONDS = 9.0;
 const DJ_OUTRO_LEAD_SECONDS = MIX_LEAD_SECONDS;
 const MIX_DURATION_MS = 5200;
 const MIX_STEPS = 52;
+const INCOMING_START_TIMEOUT_MS = 5000;
+const MAX_FAILED_CANDIDATES = 5;
 
 const TRANSITION_VARIANTS = Object.freeze([
   Object.freeze({ id: "backspin", label: "DJ BACKSPIN", duration: 0.92 }),
@@ -223,13 +227,102 @@ async function preloadNextSong() {
     return null;
   }
   const target = inactiveDeck();
-  if (deckVideos[target] !== next.video_id) {
+  if (deckVideos[target] !== next.video_id || deckErrors[target]) {
+    deckErrors[target] = null;
     players[target].cueVideoById(next.video_id);
     players[target].setVolume(0);
     deckVideos[target] = next.video_id;
   }
   queuedNextVideo = next.video_id;
   return next;
+}
+
+function settleDeckPlayback(index, error = null) {
+  const waiter = deckPlaybackWaiters[index];
+  if (!waiter) return;
+  clearTimeout(waiter.timer);
+  deckPlaybackWaiters[index] = null;
+  if (error) waiter.reject(error);
+  else waiter.resolve();
+}
+
+function waitForDeckPlayback(index, timeoutMs = INCOMING_START_TIMEOUT_MS) {
+  if (deckErrors[index]) return Promise.reject(deckErrors[index]);
+  if (players[index]?.getPlayerState?.() === YT.PlayerState.PLAYING) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      if (deckPlaybackWaiters[index]?.timer !== timer) return;
+      deckPlaybackWaiters[index] = null;
+      reject(new Error("Další video se včas nespustilo."));
+    }, timeoutMs);
+    deckPlaybackWaiters[index] = { resolve, reject, timer };
+  });
+}
+
+async function startIncomingSong(index, song) {
+  const deck = players[index];
+  if (!deck) throw new Error("Druhý přehrávač není připravený.");
+  if (deckVideos[index] !== song.video_id || deckErrors[index]) {
+    deckErrors[index] = null;
+    deck.cueVideoById(song.video_id);
+    deckVideos[index] = song.video_id;
+  }
+  deck.setVolume(0);
+  const playback = waitForDeckPlayback(index);
+  deck.playVideo();
+  await playback;
+}
+
+function resetDeck(index) {
+  settleDeckPlayback(index, new Error("Přehrávání bylo zrušeno."));
+  players[index]?.stopVideo();
+  players[index]?.setVolume(0);
+  deckVideos[index] = null;
+  deckErrors[index] = null;
+}
+
+async function reserveTransition(currentSongId, nextSongId) {
+  const options = {
+    method: "POST",
+    body: JSON.stringify({ current_song_id: currentSongId, next_song_id: nextSongId }),
+  };
+  let lastError = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await api("/api/player/transition", options);
+    } catch (error) {
+      lastError = error;
+      if (error.status && error.status !== 503) throw error;
+      if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+  throw lastError;
+}
+
+async function prepareReservedNextSong(currentSongId, incoming) {
+  const attempted = new Set();
+  for (let attempt = 0; attempt < MAX_FAILED_CANDIDATES; attempt += 1) {
+    const queued = await makeSureNextSongExists();
+    const next = queued.find((song) => !attempted.has(song.id)) || null;
+    if (!next) return null;
+    attempted.add(next.id);
+    try {
+      await startIncomingSong(incoming, next);
+    } catch (_) {
+      resetDeck(incoming);
+      await api(`/api/queue/${next.id}`, { method: "DELETE" }).catch(() => null);
+      continue;
+    }
+    try {
+      await reserveTransition(currentSongId, next.id);
+      return next;
+    } catch (error) {
+      resetDeck(incoming);
+      if (error.status === 404 || error.status === 409) continue;
+      throw error;
+    }
+  }
+  return null;
 }
 
 function equalPowerVolumes(progress, master) {
@@ -246,6 +339,7 @@ async function crossfadeDecks(outgoing, incoming, durationMs = MIX_DURATION_MS) 
   const incomingEl = deckElement(incoming);
   if (incomingEl) incomingEl.style.zIndex = "3";
   for (let step = 0; step <= MIX_STEPS; step += 1) {
+    if (deckErrors[incoming]) throw deckErrors[incoming];
     const progress = step / MIX_STEPS;
     const { outgoing: outVol, incoming: inVol } = equalPowerVolumes(progress, effectiveVolume);
     players[outgoing]?.setVolume(outVol);
@@ -258,44 +352,67 @@ async function crossfadeDecks(outgoing, incoming, durationMs = MIX_DURATION_MS) 
 
 async function finishCurrentSong(earlyMix = false) {
   if (transitioning) return;
+  const currentSongId = Number(currentSong?.id);
+  if (!Number.isInteger(currentSongId) || currentSongId <= 0) {
+    await sync(true);
+    return;
+  }
   transitioning = true;
   const outgoing = activeDeck;
   const incoming = inactiveDeck();
+  let next = null;
+  let reserved = false;
   try {
-    const queued = await makeSureNextSongExists();
-    const next = queued[0] || null;
+    next = await prepareReservedNextSong(currentSongId, incoming);
     if (!next) {
-      await api("/api/player/ended", { method: "POST" });
+      await reserveTransition(currentSongId, null);
+      reserved = true;
       players[outgoing]?.stopVideo();
       deckVideos[outgoing] = null;
       currentVideo = null;
-      return;
+      showSong(null);
+    } else {
+      reserved = true;
+      const mixPromise = crossfadeDecks(outgoing, incoming, earlyMix ? MIX_DURATION_MS : 2600);
+      const fxPromise = transitionMode === "scratch" ? playScratchTransition() : Promise.resolve();
+      await Promise.all([mixPromise, fxPromise]);
+
+      players[outgoing]?.pauseVideo();
+      players[outgoing]?.setVolume(0);
+
+      activeDeck = incoming;
+      currentVideo = next.video_id;
+      queuedNextVideo = null;
+      outroTriggeredVideo = null;
+      setDeckVisibility();
+      showSong(next);
+      players[activeDeck]?.setVolume(effectiveVolume);
     }
-    if (deckVideos[incoming] !== next.video_id) {
-      players[incoming].cueVideoById(next.video_id);
-      players[incoming].setVolume(0);
-      deckVideos[incoming] = next.video_id;
-    }
-    players[incoming].playVideo();
-    await new Promise((resolve) => setTimeout(resolve, 350));
-    const mixPromise = crossfadeDecks(outgoing, incoming, earlyMix ? MIX_DURATION_MS : 2600);
-    const fxPromise = transitionMode === "scratch" ? playScratchTransition() : Promise.resolve();
-    await Promise.all([mixPromise, fxPromise]);
-    players[outgoing]?.pauseVideo();
-    players[outgoing]?.setVolume(0);
-    activeDeck = incoming;
-    currentVideo = next.video_id;
-    queuedNextVideo = null;
-    outroTriggeredVideo = null;
-    setDeckVisibility();
-    await api("/api/player/ended", { method: "POST" });
-    players[activeDeck]?.setVolume(effectiveVolume);
   } catch (_) {
-    await api("/api/player/ended", { method: "POST" }).catch(() => null);
+    if (reserved && next) {
+      players[outgoing]?.pauseVideo();
+      players[outgoing]?.setVolume(0);
+      activeDeck = incoming;
+      currentVideo = next.video_id;
+      setDeckVisibility();
+      showSong(next);
+      players[activeDeck]?.setVolume(effectiveVolume);
+      if (deckErrors[activeDeck]) setTimeout(() => finishCurrentSong(false), 250);
+    } else {
+      resetDeck(incoming);
+      players[outgoing]?.setVolume(effectiveVolume);
+      setTimeout(() => {
+        const deck = players[activeDeck];
+        if (
+          Number(currentSong?.id) === currentSongId
+          && deck?.getPlayerState?.() !== YT.PlayerState.PLAYING
+        ) finishCurrentSong(false);
+      }, 1000);
+    }
   } finally {
     transitioning = false;
   }
-  await sync(true);
+  await sync(true).catch(() => null);
   setTimeout(() => preloadNextSong(), 300);
 }
 
@@ -335,13 +452,26 @@ function onDeckReady(index) {
 }
 
 function onDeckStateChange(index, event) {
-  if (event.data === YT.PlayerState.PLAYING) $("tapToPlay").classList.add("hidden");
+  if (event.data === YT.PlayerState.PLAYING) {
+    deckErrors[index] = null;
+    settleDeckPlayback(index);
+    $("tapToPlay").classList.add("hidden");
+  }
   if (index === activeDeck && event.data === YT.PlayerState.ENDED && !transitioning) {
     finishCurrentSong(false);
   }
+  if (index !== activeDeck && transitioning && event.data === YT.PlayerState.ENDED) {
+    const error = new Error("Další video skončilo dřív, než mohl přechod doběhnout.");
+    deckErrors[index] = error;
+    settleDeckPlayback(index, error);
+  }
 }
 
-function onDeckError(index) {
+function onDeckError(index, event) {
+  const error = new Error(`YouTube video nelze přehrát (${event?.data || "neznámá chyba"}).`);
+  error.youtubeCode = event?.data;
+  deckErrors[index] = error;
+  settleDeckPlayback(index, error);
   if (index === activeDeck && !transitioning) finishCurrentSong(false);
 }
 
@@ -358,17 +488,19 @@ function makeDeck(index, elementId) {
       rel: 0,
       modestbranding: 1,
       playsinline: 1,
+      origin: window.location.origin,
     },
     events: {
       onReady: () => onDeckReady(index),
       onStateChange: (event) => onDeckStateChange(index, event),
-      onError: () => onDeckError(index),
+      onError: (event) => onDeckError(index, event),
     },
   });
 }
 
 function createPlayers() {
   if (!apiReady || players[0] || players[1]) return;
+  if (!$("playerA") || !$("playerB")) return;
   players[0] = makeDeck(0, "playerA");
   players[1] = makeDeck(1, "playerB");
 }
@@ -429,7 +561,9 @@ async function ensureAutoDjBuffer(state) {
       await api("/api/player/start", { method: "POST" });
       setTimeout(() => sync(true), 250);
     }
+    setTimeout(() => preloadNextSong(), 250);
   } catch (_) {
+    // AutoDJ doplní zásobník při další kontrole.
   } finally {
     autoDjBusy = false;
   }
@@ -452,30 +586,38 @@ function showSong(song) {
 
 async function applyState(state, force = false) {
   const song = state.now_playing;
+  effectiveVolume = state.night_mode ? Math.min(state.volume, nightVolume) : state.volume;
+  if (transitioning) return;
   showSong(song);
   if (!deckReady.every(Boolean)) return;
-  effectiveVolume = state.night_mode ? Math.min(state.volume, nightVolume) : state.volume;
+
   setAllDeckVolumes();
+
   if (song && (force || song.video_id !== currentVideo)) {
-    const target = currentVideo ? activeDeck : activeDeck;
-    if (!transitioning && deckVideos[target] !== song.video_id) {
+    if (song.video_id !== currentVideo) {
+      const deck = players[activeDeck];
+      if (deckVideos[activeDeck] !== song.video_id) {
+        deck.loadVideoById(song.video_id);
+        deckVideos[activeDeck] = song.video_id;
+      } else {
+        deck.playVideo();
+      }
       currentVideo = song.video_id;
       outroTriggeredVideo = null;
-      deckVideos[target] = song.video_id;
-      players[target].loadVideoById(song.video_id);
-      players[target].setVolume(effectiveVolume);
     }
-  } else if (!song && currentVideo) {
-    currentVideo = null;
+  } else if (!song && currentVideo && !transitioning) {
     players[activeDeck]?.stopVideo();
+    currentVideo = null;
     deckVideos[activeDeck] = null;
   }
+
   if (state.revision !== lastRevision) {
     if (state.action === "pause") players[activeDeck]?.pauseVideo();
     if (state.action === "resume") players[activeDeck]?.playVideo();
     lastRevision = state.revision;
   }
-  preloadNextSong();
+
+  if (!transitioning) preloadNextSong();
 }
 
 async function sync(force = false) {
@@ -526,13 +668,17 @@ async function boot() {
   $("loginForm").addEventListener("submit", login);
   $("tapToPlay").addEventListener("click", () => {
     unlockTransitionAudio();
-    players[activeDeck]?.playVideo();
+    players.forEach((deck, index) => {
+      if (!deckReady[index] || !deck) return;
+      if (index === activeDeck) deck.playVideo();
+    });
     $("tapToPlay").classList.add("hidden");
   });
   const me = await api("/api/me").catch(() => ({ admin: false }));
   if (me.admin) await startTv();
   setInterval(() => sync(), 1500);
-  setInterval(() => monitorDjOutro(), 500);
+  setInterval(() => monitorDjOutro(), 400);
+  setInterval(() => preloadNextSong(), 5000);
 }
 
 boot();

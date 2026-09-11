@@ -58,6 +58,15 @@
           <a class="btn secondary compact" href="/tv" target="_blank">Otevřít TV</a>
         </div>
         <p class="small muted" id="searchProvider"></p>
+        <div class="admin-search">
+          <div class="eyebrow">RYCHLÉ PŘIDÁNÍ OBSLUHOU</div>
+          <form class="search-row" id="adminSearchForm">
+            <input id="adminSearchInput" autocomplete="off" enterkeyhint="search" maxlength="100" placeholder="Interpret nebo skladba" required>
+            <button class="btn compact" id="adminSearchButton" type="submit">Hledat</button>
+          </form>
+          <div class="status" id="adminSearchStatus" role="status"></div>
+          <div class="results admin-search-results" id="adminSearchResults"></div>
+        </div>
         <div class="network-card">
           <div class="eyebrow">SÍŤ BARU</div>
           <strong id="networkTitle">Přístup není omezený</strong>

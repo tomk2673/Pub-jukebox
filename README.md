@@ -1,8 +1,8 @@
-# PUB Jukebox 1.7
+# PUB Jukebox 1.9.1
 
 Webový jukebox pro bar. Host načte QR kód, vyhledá skladbu podle názvu na YouTube, přidá ji do společné fronty a může jednou hlasovat. Obsluha řídí pořadí a TV přehrává frontu automaticky.
 
-## Co verze 1.7 umí
+## Co verze 1.9.1 umí
 
 - hledání skladeb podle názvu a interpreta
 - záložní YouTube vyhledávání i bez API klíče
@@ -25,8 +25,9 @@ Webový jukebox pro bar. Host načte QR kód, vyhledá skladbu podle názvu na Y
 - TV přehrávač s automatickým pokračováním
 - pauza, pokračování, přeskočení a vzdálená hlasitost
 - okamžité přidání skladby bez potvrzování obsluhou; pořadí řídí hlasování hostů
+- explicitní hudba bez schvalování obsluhou; věkově omezené nebo nevložitelné kopie se automaticky vyřadí či přeskočí
 - noční limit celkové hlasitosti
-- Night Bass Guard PRO pro Windows a Chrome: automatické srovnání hlasitosti, dynamická ochrana basů pod 120 Hz a look-ahead limiter
+- Night Bass Guard PRO pro Windows a Chrome: automatické srovnání hlasitosti, 30Hz subsonický filtr, dynamická ochrana basů pod 120 Hz a look-ahead limiter
 - živý stav Windows procesoru a míra zásahu přímo v administraci
 - volitelné omezení hostů na veřejnou IPv4 adresu nebo IPv6 /64 barové Wi‑Fi; administrace zůstává dostupná pro obnovu sítě
 - instalace na plochu iPhonu jako webová aplikace
