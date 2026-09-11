@@ -302,7 +302,9 @@ app.mount("/static", StaticFiles(directory=STATIC), name="static")
 async def security_headers(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["Referrer-Policy"] = "same-origin"
+    response.headers["Referrer-Policy"] = (
+        "strict-origin-when-cross-origin" if request.url.path == "/tv" else "same-origin"
+    )
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
     if request.url.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store"

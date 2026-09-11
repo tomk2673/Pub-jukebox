@@ -379,6 +379,7 @@ def test_tv_player_blocks_customer_youtube_controls(tmp_path, monkeypatch):
         script = client.get("/static/tv.js")
         style = client.get("/static/tv.css")
         assert tv.status_code == 200
+        assert tv.headers["referrer-policy"] == "strict-origin-when-cross-origin"
         assert 'class="player-guard"' in tv.text
         assert 'id="playerA"' in tv.text
         assert 'id="playerB"' in tv.text
@@ -386,6 +387,7 @@ def test_tv_player_blocks_customer_youtube_controls(tmp_path, monkeypatch):
         assert "VYBER DALŠÍ SKLADBU" in tv.text
         assert "disablekb: 1" in script.text
         assert "fs: 0" in script.text
+        assert "origin: window.location.origin" in script.text
         assert "iframe#player" in style.text
         assert "pointer-events: none" in style.text
         assert 'api("/api/player/transition"' in script.text

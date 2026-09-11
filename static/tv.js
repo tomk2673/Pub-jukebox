@@ -488,6 +488,7 @@ function makeDeck(index, elementId) {
       rel: 0,
       modestbranding: 1,
       playsinline: 1,
+      origin: window.location.origin,
     },
     events: {
       onReady: () => onDeckReady(index),
