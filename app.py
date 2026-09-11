@@ -294,7 +294,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="PUB Jukebox", version="1.9.0", lifespan=lifespan)
+app = FastAPI(title="PUB Jukebox", version="1.9.1", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
@@ -324,6 +324,11 @@ class Song(BaseModel):
 class PlayerControl(BaseModel):
     action: Literal["pause", "resume", "volume", "night"]
     value: int | bool | None = None
+
+
+class PlayerTransition(BaseModel):
+    current_song_id: int = Field(gt=0)
+    next_song_id: int | None = Field(default=None, gt=0)
 
 
 class VenueSettingsUpdate(BaseModel):
@@ -835,6 +840,55 @@ def advance_queue() -> dict | None:
         )
 
 
+def transition_queue(current_song_id: int, next_song_id: int | None) -> dict:
+    """Commit the exact deck transition once, even when the client retries."""
+    with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        playing = current_song(conn)
+
+        if next_song_id is None:
+            if playing is None:
+                finished = conn.execute(
+                    "SELECT status FROM queue WHERE id=?", (current_song_id,)
+                ).fetchone()
+                if finished and finished["status"] in {"done", "removed"}:
+                    conn.commit()
+                    return {"ok": True, "song": None, "idempotent": True}
+                raise HTTPException(409, "Přehrávaná skladba se mezitím změnila.")
+            if playing["id"] != current_song_id:
+                raise HTTPException(409, "Přehrávaná skladba se mezitím změnila.")
+            conn.execute(
+                "UPDATE queue SET status='done', finished_at=? WHERE status='playing'",
+                (now(),),
+            )
+            bump_player(conn, "load")
+            conn.commit()
+            return {"ok": True, "song": None, "idempotent": False}
+
+        selected = conn.execute("SELECT * FROM queue WHERE id=?", (next_song_id,)).fetchone()
+        if selected and selected["status"] == "playing":
+            conn.commit()
+            return {"ok": True, "song": dict(selected), "idempotent": True}
+        if playing is None or playing["id"] != current_song_id:
+            raise HTTPException(409, "Přehrávaná skladba se mezitím změnila.")
+        if not selected or selected["status"] != "queued":
+            raise HTTPException(409, "Vybraná další skladba už není ve frontě.")
+
+        timestamp = now()
+        conn.execute(
+            "UPDATE queue SET status='done', finished_at=? WHERE status='playing'",
+            (timestamp,),
+        )
+        conn.execute(
+            "UPDATE queue SET status='playing', started_at=?, finished_at=NULL WHERE id=?",
+            (timestamp, next_song_id),
+        )
+        bump_player(conn, "load")
+        row = dict(conn.execute("SELECT * FROM queue WHERE id=?", (next_song_id,)).fetchone())
+        conn.commit()
+    return {"ok": True, "song": row, "idempotent": False}
+
+
 def autodj_status() -> dict:
     if USE_SUPABASE:
         result = supabase_rpc("jukebox_autodj_rpc", "status")
@@ -1334,6 +1388,15 @@ def player_ended(request: Request):
     return {"ok": True, "song": advance_queue()}
 
 
+@app.post("/api/player/transition")
+def player_transition(payload: PlayerTransition, request: Request):
+    require_admin(request)
+    body = payload.model_dump()
+    if USE_SUPABASE:
+        return supabase_rpc("jukebox_transition_rpc", "transition", body)
+    return transition_queue(payload.current_song_id, payload.next_song_id)
+
+
 @app.post("/api/player/autodj/prepare")
 def prepare_autodj(request: Request):
     require_admin(request)
@@ -1451,7 +1514,19 @@ def resolve_video(request: Request, url: str = Query(min_length=1, max_length=50
         return song
     except HTTPException:
         raise
-    except (httpx.HTTPError, ValueError):
+    except httpx.HTTPStatusError as exc:
+        if 400 <= exc.response.status_code < 500:
+            raise HTTPException(
+                422,
+                "Tahle verze videa vyžaduje potvrzení na YouTube. Vyhledej stejnou skladbu přímo v jukeboxu.",
+            ) from exc
+        return {
+            "video_id": video_id,
+            "title": video_id,
+            "artist": "",
+            "thumbnail": f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
+        }
+    except (httpx.RequestError, ValueError):
         return {
             "video_id": video_id,
             "title": video_id,
@@ -1468,9 +1543,10 @@ def official_youtube_search(query: str, limit: int) -> list[dict]:
             "q": query,
             "type": "video",
             "videoCategoryId": "10",
-            "maxResults": limit,
-            "safeSearch": "moderate",
+            "maxResults": min(50, max(limit * 2, 10)),
+            "safeSearch": "none",
             "videoEmbeddable": "true",
+            "order": "viewCount",
             "regionCode": "CZ",
             "relevanceLanguage": "cs",
             "key": YOUTUBE_API_KEY,
@@ -1478,7 +1554,7 @@ def official_youtube_search(query: str, limit: int) -> list[dict]:
         timeout=10,
     )
     response.raise_for_status()
-    results = []
+    candidates = []
     for item in response.json().get("items", []):
         video_id = item.get("id", {}).get("videoId", "")
         snippet = item.get("snippet", {})
@@ -1490,8 +1566,31 @@ def official_youtube_search(query: str, limit: int) -> list[dict]:
                 "thumbnail": snippet.get("thumbnails", {}).get("medium", {}).get("url", ""),
             }
             if is_music_candidate(song):
-                results.append(song)
-    return results
+                candidates.append(song)
+    if not candidates:
+        return []
+
+    details = httpx.get(
+        "https://www.googleapis.com/youtube/v3/videos",
+        params={
+            "part": "status,contentDetails",
+            "id": ",".join(song["video_id"] for song in candidates),
+            "key": YOUTUBE_API_KEY,
+        },
+        timeout=10,
+    )
+    details.raise_for_status()
+    playable_ids = set()
+    for item in details.json().get("items", []):
+        status = item.get("status", {})
+        rating = item.get("contentDetails", {}).get("contentRating", {}).get("ytRating")
+        if (
+            status.get("embeddable") is True
+            and status.get("privacyStatus") == "public"
+            and rating != "ytAgeRestricted"
+        ):
+            playable_ids.add(item.get("id", ""))
+    return [song for song in candidates if song["video_id"] in playable_ids][:limit]
 
 
 def fallback_youtube_search(query: str, limit: int) -> list[dict]:
@@ -1512,6 +1611,14 @@ def fallback_youtube_search(query: str, limit: int) -> list[dict]:
     for item in (data or {}).get("entries", []):
         video_id = str(item.get("id", ""))
         if not VIDEO_ID_RE.fullmatch(video_id):
+            continue
+        try:
+            age_limit = int(item.get("age_limit") or 0)
+        except (TypeError, ValueError):
+            age_limit = 0
+        if age_limit >= 18 or item.get("playable_in_embed") is False:
+            continue
+        if item.get("availability") in {"private", "premium_only", "subscriber_only", "needs_auth"}:
             continue
         thumbnail = item.get("thumbnail") or f"https://i.ytimg.com/vi/{video_id}/mqdefault.jpg"
         song = {

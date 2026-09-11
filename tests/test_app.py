@@ -175,6 +175,86 @@ def test_official_youtube_search_requests_music_category(monkeypatch):
     jukebox.official_youtube_search("test", 8)
     assert captured["type"] == "video"
     assert captured["videoCategoryId"] == "10"
+    assert captured["safeSearch"] == "none"
+    assert captured["videoEmbeddable"] == "true"
+    assert captured["order"] == "viewCount"
+
+
+def test_official_search_keeps_explicit_music_but_rejects_age_gate(monkeypatch):
+    calls = []
+
+    class Response:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self.payload
+
+    def fake_get(url, params, timeout):
+        calls.append((url, params))
+        if url.endswith("/search"):
+            return Response(
+                {
+                    "items": [
+                        {
+                            "id": {"videoId": VIDEO_A},
+                            "snippet": {"title": "Explicit album version", "channelTitle": "Artist", "thumbnails": {}},
+                        },
+                        {
+                            "id": {"videoId": VIDEO_B},
+                            "snippet": {"title": "Age gated version", "channelTitle": "Artist", "thumbnails": {}},
+                        },
+                        {
+                            "id": {"videoId": VIDEO_C},
+                            "snippet": {"title": "Embedding disabled", "channelTitle": "Artist", "thumbnails": {}},
+                        },
+                    ]
+                }
+            )
+        return Response(
+            {
+                "items": [
+                    {
+                        "id": VIDEO_A,
+                        "status": {"embeddable": True, "privacyStatus": "public"},
+                        "contentDetails": {"contentRating": {}},
+                    },
+                    {
+                        "id": VIDEO_B,
+                        "status": {"embeddable": True, "privacyStatus": "public"},
+                        "contentDetails": {"contentRating": {"ytRating": "ytAgeRestricted"}},
+                    },
+                    {
+                        "id": VIDEO_C,
+                        "status": {"embeddable": False, "privacyStatus": "public"},
+                        "contentDetails": {"contentRating": {}},
+                    },
+                ]
+            }
+        )
+
+    monkeypatch.setattr(jukebox.httpx, "get", fake_get)
+    results = jukebox.official_youtube_search("test", 8)
+    assert [song["video_id"] for song in results] == [VIDEO_A]
+    assert calls[0][1]["safeSearch"] == "none"
+    assert calls[1][1]["part"] == "status,contentDetails"
+
+
+def test_direct_age_gated_link_is_not_added_blindly(tmp_path, monkeypatch):
+    def fake_get(*_args, **_kwargs):
+        request = jukebox.httpx.Request("GET", "https://www.youtube.com/oembed")
+        response = jukebox.httpx.Response(401, request=request)
+        raise jukebox.httpx.HTTPStatusError("age gate", request=request, response=response)
+
+    monkeypatch.setattr(jukebox.httpx, "get", fake_get)
+    with make_client(tmp_path, monkeypatch) as client:
+        join(client)
+        response = client.get(f"/api/videos/resolve?url=https://youtu.be/{VIDEO_A}")
+        assert response.status_code == 422
+        assert "přímo v jukeboxu" in response.json()["detail"]
 
 
 def test_guest_song_needs_no_admin_approval(tmp_path, monkeypatch):
@@ -229,6 +309,70 @@ def test_admin_controls_player_and_qr(tmp_path, monkeypatch):
         assert "svg" in qr.headers["content-type"]
 
 
+def test_admin_can_search_and_add_without_switching_to_guest_page(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        jukebox,
+        "fallback_youtube_search",
+        lambda query, limit: [
+            {"video_id": VIDEO_A, "title": f"Result {query}", "artist": "Artist", "thumbnail": ""}
+        ],
+    )
+    with make_client(tmp_path, monkeypatch) as client:
+        login(client)
+        page = client.get("/admin")
+        script = client.get("/static/admin.js")
+        assert 'id="adminSearchForm"' in page.text
+        assert "/api/search?q=" in script.text
+        assert 'requested_by: "Obsluha"' in script.text
+
+        result = client.get("/api/search?q=test").json()["items"][0]
+        created = client.post("/api/queue", json={**result, "requested_by": "Obsluha"})
+        assert created.status_code == 201
+        assert created.json()["status"] == "playing"
+
+
+def test_transition_reserves_exact_song_and_retry_is_idempotent(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        join(client)
+        first = add(client, VIDEO_A, "Song A").json()
+        selected = add(client, VIDEO_B, "Song B").json()
+        higher_ranked = add(client, VIDEO_C, "Song C").json()
+        assert client.post(f"/api/queue/{higher_ranked['id']}/vote").status_code == 200
+        login(client)
+
+        payload = {"current_song_id": first["id"], "next_song_id": selected["id"]}
+        committed = client.post("/api/player/transition", json=payload)
+        assert committed.status_code == 200
+        assert committed.json()["song"]["id"] == selected["id"]
+        assert committed.json()["idempotent"] is False
+        revision = client.get("/api/player/state").json()["revision"]
+
+        retried = client.post("/api/player/transition", json=payload)
+        assert retried.status_code == 200
+        assert retried.json()["song"]["id"] == selected["id"]
+        assert retried.json()["idempotent"] is True
+        assert client.get("/api/player/state").json()["revision"] == revision
+
+        queue = client.get("/api/queue").json()
+        assert next(song for song in queue if song["status"] == "playing")["id"] == selected["id"]
+        assert next(song for song in queue if song["id"] == higher_ranked["id"])["status"] == "queued"
+        assert client.post(
+            "/api/player/transition",
+            json={"current_song_id": first["id"], "next_song_id": higher_ranked["id"]},
+        ).status_code == 409
+
+
+def test_transition_to_silence_is_idempotent(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        join(client)
+        song = add(client, VIDEO_A, "Only song").json()
+        login(client)
+        payload = {"current_song_id": song["id"], "next_song_id": None}
+        assert client.post("/api/player/transition", json=payload).json()["idempotent"] is False
+        assert client.post("/api/player/transition", json=payload).json()["idempotent"] is True
+        assert client.get("/api/player/state").json()["now_playing"] is None
+
+
 def test_tv_player_blocks_customer_youtube_controls(tmp_path, monkeypatch):
     with make_client(tmp_path, monkeypatch) as client:
         tv = client.get("/tv")
@@ -236,12 +380,18 @@ def test_tv_player_blocks_customer_youtube_controls(tmp_path, monkeypatch):
         style = client.get("/static/tv.css")
         assert tv.status_code == 200
         assert 'class="player-guard"' in tv.text
+        assert 'id="playerA"' in tv.text
+        assert 'id="playerB"' in tv.text
         assert 'class="tv-qr"' in tv.text
         assert "VYBER DALŠÍ SKLADBU" in tv.text
         assert "disablekb: 1" in script.text
         assert "fs: 0" in script.text
         assert "iframe#player" in style.text
         assert "pointer-events: none" in style.text
+        assert 'api("/api/player/transition"' in script.text
+        assert 'api("/api/player/ended"' not in script.text
+        assert "waitForDeckPlayback" in script.text
+        assert "if (transitioning) return;\n  showSong(song);" in script.text
 
 
 def test_guest_mobile_layout_blocks_horizontal_overscroll(tmp_path, monkeypatch):
@@ -454,6 +604,16 @@ def test_windows_audio_processor_heartbeat(tmp_path, monkeypatch):
         assert status["bass_reduction_db"] == 4.5
 
 
+def test_bass_guard_has_safe_offline_profile_and_failure_cleanup():
+    source = (jukebox.BASE / "windows-bass-guard" / "offscreen.js").read_text()
+    manifest = (jukebox.BASE / "windows-bass-guard" / "manifest.json").read_text()
+    assert 'audio_mode: "bass_guard"' in source
+    assert "bass_guard_strength: 100" in source
+    assert "readProfile().catch(() => SAFE_PROFILE)" in source
+    assert "catch (error) {\n    await stop();\n    throw error;" in source
+    assert '"version": "0.2.0"' in manifest
+
+
 def test_guest_access_can_be_locked_to_bar_network(tmp_path, monkeypatch):
     bar_ip = {"x-real-ip": "203.0.113.10"}
     outside_ip = {"x-real-ip": "198.51.100.25"}
@@ -505,3 +665,26 @@ def test_supabase_routes_use_rpc(tmp_path, monkeypatch):
 
     assert [action for action, _ in calls] == ["health", "add_song", "queue_list"]
     assert calls[1][1]["max_queue"] == jukebox.MAX_QUEUE_LENGTH
+
+
+def test_supabase_transition_uses_dedicated_idempotent_rpc(monkeypatch):
+    calls = []
+
+    def fake_supabase_rpc(function_name, action, payload=None):
+        calls.append((function_name, action, payload))
+        return {"ok": True, "song": {"id": payload["next_song_id"]}}
+
+    monkeypatch.setattr(jukebox, "USE_SUPABASE", True)
+    monkeypatch.setattr(jukebox, "supabase_rpc", fake_supabase_rpc)
+    with TestClient(jukebox.app) as client:
+        login(client)
+        response = client.post(
+            "/api/player/transition",
+            json={"current_song_id": 11, "next_song_id": 12},
+        )
+        assert response.status_code == 200
+        assert response.json()["song"]["id"] == 12
+
+    assert calls == [
+        ("jukebox_transition_rpc", "transition", {"current_song_id": 11, "next_song_id": 12})
+    ]

@@ -4,5 +4,11 @@
     "app.py": {
       "maxDuration": 60
     }
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/download",
+      "destination": "/static/download.html"
+    }
+  ]
 }

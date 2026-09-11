@@ -80,4 +80,37 @@ for (let block = 0; block < 8; block += 1) {
 assert.ok(transientProcessor.limiterGain < 0.8, "Limiter musí na plnou špičku skutečně reagovat");
 assert.ok(transientPeak <= 10 ** (-6 / 20) + 0.015, "Look-ahead limiter musí zachytit plnou špičku");
 
-console.log(JSON.stringify({ outputPeak, transientPeak, latest }));
+const subsonicProcessor = new ProcessorClass({
+  processorOptions: {
+    config: {
+      audio_mode: "bass_guard",
+      target_lufs: -16,
+      limiter_ceiling_db: 0,
+      bass_guard_strength: 0,
+    },
+  },
+});
+let subsonicInputPower = 0;
+let subsonicOutputPower = 0;
+let subsonicFrames = 0;
+phase = 0;
+for (let block = 0; block < 90; block += 1) {
+  const signal = new Float32Array(128);
+  for (let index = 0; index < signal.length; index += 1) {
+    signal[index] = 0.25 * Math.sin(2 * Math.PI * 20 * phase / 48000);
+    phase += 1;
+  }
+  const output = [new Float32Array(128), new Float32Array(128)];
+  subsonicProcessor.process([[signal, signal]], [output]);
+  if (block > 20) {
+    for (let index = 0; index < signal.length; index += 1) {
+      subsonicInputPower += signal[index] ** 2;
+      subsonicOutputPower += output[0][index] ** 2;
+      subsonicFrames += 1;
+    }
+  }
+}
+const subsonicRatio = Math.sqrt(subsonicOutputPower / subsonicFrames) / Math.sqrt(subsonicInputPower / subsonicFrames);
+assert.ok(subsonicRatio < 0.6, "30Hz high-pass musí výrazně odlehčit neslyšitelným 20Hz vibracím");
+
+console.log(JSON.stringify({ outputPeak, transientPeak, subsonicRatio, latest }));

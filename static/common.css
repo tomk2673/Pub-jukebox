@@ -272,6 +272,14 @@ textarea:focus { border-color: var(--amber); box-shadow: 0 0 0 4px rgba(255, 186
 
 .admin-grid { display: grid; grid-template-columns: 310px minmax(0, 1fr); gap: 18px; }
 .sticky { position: sticky; top: 18px; align-self: start; }
+.admin-search { margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--line); }
+.admin-search .search-row { grid-template-columns: 1fr; }
+.admin-search-results { max-height: 340px; overflow-y: auto; overscroll-behavior: contain; }
+.admin-search-results .song-card { grid-template-columns: 58px minmax(0, 1fr); padding: 8px; }
+.admin-search-results .thumb { width: 58px; height: 44px; }
+.admin-search-results .song-title { font-size: .88rem; }
+.admin-search-results .song-meta { font-size: .74rem; }
+.admin-search-results .song-card > .btn { grid-column: 1 / -1; width: 100%; }
 .qr { display: block; width: min(240px, 100%); margin: 16px auto; padding: 10px; border-radius: 17px; background: #fff; }
 .url-box { overflow-wrap: anywhere; font-size: 12px; color: var(--muted); }
 .controls { display: flex; gap: 8px; flex-wrap: wrap; }
