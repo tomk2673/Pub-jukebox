@@ -73,6 +73,15 @@ class Biquad {
     this.z2 = this.b2 * sample - this.a2 * result;
     return result;
   }
+
+  lowShelf(frequency, gainDb, rate) {
+    this.highShelf(frequency, -gainDb, rate);
+    const gain = dbToGain(gainDb);
+    this.b0 *= gain;
+    this.b1 *= gain;
+    this.b2 *= gain;
+    return this;
+  }
 }
 
 class NightBassGuardProcessor extends AudioWorkletProcessor {
@@ -81,6 +90,7 @@ class NightBassGuardProcessor extends AudioWorkletProcessor {
     this.config = this.normalizeConfig(options.processorOptions?.config || {});
     this.subsonicFilters = [];
     this.lowFilters = [];
+    this.bassShelves = [];
     this.weightHighpass = [];
     this.weightShelf = [];
     this.delayBuffers = [];
@@ -91,6 +101,7 @@ class NightBassGuardProcessor extends AudioWorkletProcessor {
     this.lowValues = new Float64Array(8);
     this.processedValues = new Float64Array(8);
     this.loudnessPower = 1e-8;
+    this.fastLoudnessPower = 1e-8;
     this.fullPower = 1e-8;
     this.bassPower = 1e-8;
     this.levelGain = 1;
@@ -100,10 +111,11 @@ class NightBassGuardProcessor extends AudioWorkletProcessor {
     this.meterFrames = 0;
 
     this.loudnessCoefficient = Math.exp(-1 / (sampleRate * 3));
+    this.fastLoudnessCoefficient = Math.exp(-1 / (sampleRate * 0.4));
     this.fullCoefficient = Math.exp(-1 / (sampleRate * 0.4));
     this.bassCoefficient = Math.exp(-1 / (sampleRate * 0.25));
     this.levelAttack = Math.exp(-1 / (sampleRate * 0.35));
-    this.levelRelease = Math.exp(-1 / (sampleRate * 4));
+    this.levelRelease = Math.exp(-1 / (sampleRate * 1.2));
     this.bassAttack = Math.exp(-1 / (sampleRate * 0.035));
     this.bassRelease = Math.exp(-1 / (sampleRate * 0.7));
     this.limiterRelease = Math.exp(-1 / (sampleRate * 0.12));
@@ -126,6 +138,7 @@ class NightBassGuardProcessor extends AudioWorkletProcessor {
     while (this.lowFilters.length < channelCount) {
       this.subsonicFilters.push(new Biquad().highpass(30, 0.707, sampleRate));
       this.lowFilters.push(new Biquad().lowpass(120, 0.707, sampleRate));
+      this.bassShelves.push(new Biquad().lowShelf(150, 0, sampleRate));
       this.weightHighpass.push(new Biquad().highpass(38, 0.5, sampleRate));
       this.weightShelf.push(new Biquad().highShelf(1682, 4, sampleRate));
       this.delayBuffers.push(new Float32Array(this.delaySize));
@@ -139,6 +152,11 @@ class NightBassGuardProcessor extends AudioWorkletProcessor {
     const channelCount = Math.min(output.length, 8);
     const frameCount = output[0].length;
     this.ensureChannels(channelCount);
+    // A real low shelf avoids the phase-dependent boost created by subtracting
+    // a low-pass signal from the dry signal. Update once per audio block.
+    for (let channel = 0; channel < channelCount; channel += 1) {
+      this.bassShelves[channel].lowShelf(150, gainToDb(this.bassGain), sampleRate);
+    }
 
     for (let frame = 0; frame < frameCount; frame += 1) {
       let fullFramePower = 0;
@@ -150,9 +168,10 @@ class NightBassGuardProcessor extends AudioWorkletProcessor {
         const raw = source?.[frame] || 0;
         const sample = this.config.enabled ? this.subsonicFilters[channel].process(raw) : raw;
         const low = this.lowFilters[channel].process(sample);
-        const weighted = this.weightShelf[channel].process(this.weightHighpass[channel].process(sample));
+        const balanced = this.bassShelves[channel].process(sample);
+        const weighted = this.weightShelf[channel].process(this.weightHighpass[channel].process(balanced));
         this.rawValues[channel] = raw;
-        this.inputValues[channel] = sample;
+        this.inputValues[channel] = balanced;
         this.lowValues[channel] = low;
         fullFramePower += sample * sample;
         bassFramePower += low * low;
@@ -165,11 +184,15 @@ class NightBassGuardProcessor extends AudioWorkletProcessor {
       this.fullPower = this.fullCoefficient * this.fullPower + (1 - this.fullCoefficient) * fullFramePower;
       this.bassPower = this.bassCoefficient * this.bassPower + (1 - this.bassCoefficient) * bassFramePower;
       this.loudnessPower = this.loudnessCoefficient * this.loudnessPower + (1 - this.loudnessCoefficient) * weightedFramePower;
+      this.fastLoudnessPower = this.fastLoudnessCoefficient * this.fastLoudnessPower + (1 - this.fastLoudnessCoefficient) * weightedFramePower;
 
-      const measuredLufs = 10 * Math.log10(Math.max(1e-10, this.loudnessPower));
+      const measuredLufs = 10 * Math.log10(Math.max(1e-10, this.fastLoudnessPower));
       let wantedGain = 1;
-      if (this.config.enabled && measuredLufs > -55) {
-        wantedGain = dbToGain(clamp(this.config.targetLufs - measuredLufs, -12, 9));
+      if (this.config.enabled && measuredLufs > -45) {
+        wantedGain = dbToGain(clamp(this.config.targetLufs - measuredLufs, -24, 12));
+      } else if (this.config.enabled) {
+        // Do not turn pauses and near-silence into amplified noise.
+        wantedGain = Math.min(1, this.levelGain);
       }
       const levelCoefficient = wantedGain < this.levelGain ? this.levelAttack : this.levelRelease;
       this.levelGain = levelCoefficient * this.levelGain + (1 - levelCoefficient) * wantedGain;
@@ -178,10 +201,10 @@ class NightBassGuardProcessor extends AudioWorkletProcessor {
       const fullDb = 10 * Math.log10(Math.max(1e-10, this.fullPower));
       if (this.config.enabled && this.config.bassStrength > 0 && fullDb > -48) {
         const bassShareDb = 10 * Math.log10(Math.max(1e-10, this.bassPower / this.fullPower));
-        const threshold = -2 - 0.06 * this.config.bassStrength;
+        const threshold = -3 - 0.07 * this.config.bassStrength;
         const excess = Math.max(0, bassShareDb - threshold);
         const ratio = 0.35 + 0.006 * this.config.bassStrength;
-        bassReductionDb = Math.min(this.config.bassStrength * 0.12, excess * ratio);
+        bassReductionDb = Math.min(this.config.bassStrength * 0.18, this.config.bassStrength * 0.035 + excess * ratio);
       }
       const wantedBassGain = dbToGain(-bassReductionDb);
       const bassCoefficient = wantedBassGain < this.bassGain ? this.bassAttack : this.bassRelease;
@@ -189,7 +212,7 @@ class NightBassGuardProcessor extends AudioWorkletProcessor {
 
       let peak = 0;
       for (let channel = 0; channel < channelCount; channel += 1) {
-        const processed = (this.inputValues[channel] + this.lowValues[channel] * (this.bassGain - 1)) * this.levelGain;
+        const processed = this.inputValues[channel] * this.levelGain;
         this.processedValues[channel] = processed;
         peak = Math.max(peak, Math.abs(processed));
       }
@@ -204,7 +227,7 @@ class NightBassGuardProcessor extends AudioWorkletProcessor {
         const delay = this.delayBuffers[channel];
         const delayed = delay[this.delayIndex];
         delay[this.delayIndex] = this.processedValues[channel];
-        output[channel][frame] = this.config.enabled ? delayed * this.limiterGain : this.rawValues[channel];
+        output[channel][frame] = this.config.enabled ? clamp(delayed * this.limiterGain, -ceiling, ceiling) : this.rawValues[channel];
       }
       this.delayIndex = (this.delayIndex + 1) % this.delaySize;
     }

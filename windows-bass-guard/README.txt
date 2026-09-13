@@ -5,7 +5,8 @@ Co modul dělá
 -------------
 - průběžně vyrovnává rozdílnou hlasitost skladeb,
 - odřízne neslyšitelné vibrace pod 30 Hz, které zbytečně zatěžují aparaturu,
-- dynamicky stáhne jen přebytečnou energii pod 120 Hz,
+- basový shelf kolem 150 Hz stáhne basy podle síly ochrany a navíc reaguje na jejich převahu,
+- hlasitost měří až po basovém filtru a dorovnává ji rychleji; při tichu nezvyšuje šum,
 - look-ahead limiter zachytí špičky před výstupem,
 - posílá do administrace živý stav a hodnoty zásahu.
 
@@ -27,6 +28,9 @@ Každé spuštění TV
 
 Důležité
 --------
+- Verze 0.3.0: rychlejší dorovnání hlasitosti, skutečný basový shelf a přesnější omezení špiček.
+- Aktualizace: rozbal novou verzi do původní složky a v chrome://extensions klikni na Načíst znovu.
+- Potom na kartě /tv znovu klikni na ikonu modulu. Stav v administraci se ukazuje i na iPhonu.
 - Rozšíření zachytává pouze zvuk aktuální TV karty, nikoli mikrofon.
 - Když je v administraci vybraný „Běžný výstup“, zvuk pouze bezpečně propustí.
 - Režim Bass Guard PRO se řídí hodnotami LUFS, limitu a ochrany basů v administraci.
