@@ -5,6 +5,7 @@
   --orange: #ff7a1a;
   --cyan: #61e7dc;
   --pink: #ff4d9d;
+  --side-panel-width: min(29vw, 480px);
 }
 
 * { box-sizing: border-box; }
@@ -92,8 +93,10 @@ iframe#player, #player iframe, iframe#playerA, iframe#playerB { pointer-events: 
   .tv-qr { top: 12vh; width: min(58vw,330px); }
 }
 
+body[data-mode="dj"] .tv-qr,
+body[data-mode="menu"] .tv-qr { width: var(--side-panel-width); }
 body[data-mode="dj"] .player-shell,
-body[data-mode="menu"] .player-shell { inset: auto 3vw 3vw auto; z-index: 6; width: min(29vw, 480px); height: min(30vh, 285px); border: 2px solid rgba(255,255,255,.14); border-radius: 20px; box-shadow: 0 22px 65px rgba(0,0,0,.48); }
+body[data-mode="menu"] .player-shell { inset: auto 3vw 3vw auto; z-index: 6; width: var(--side-panel-width); height: min(30vh, 285px); border: 2px solid rgba(255,255,255,.14); border-radius: 20px; box-shadow: 0 22px 65px rgba(0,0,0,.48); }
 body[data-mode="dj"] .overlay,
 body[data-mode="menu"] .overlay { right: auto; width: 70vw; padding: 48px 4vw 3vw; background: linear-gradient(transparent,rgba(0,0,0,.78)); }
 body[data-mode="dj"] .overlay strong,
