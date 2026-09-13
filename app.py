@@ -294,7 +294,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="PUB Jukebox", version="1.9.1", lifespan=lifespan)
+app = FastAPI(title="PUB Jukebox", version="1.9.2", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
@@ -1182,7 +1182,7 @@ def admin_qr(request: Request):
     require_admin(request)
     join_url = f"{public_base(request)}/guest?code={quote(JOIN_CODE)}"
     factory = qrcode.image.svg.SvgPathImage
-    image = qrcode.make(join_url, image_factory=factory, box_size=12, border=2)
+    image = qrcode.make(join_url, image_factory=factory, box_size=12, border=4)
     output = io.BytesIO()
     image.save(output)
     return Response(output.getvalue(), media_type="image/svg+xml")

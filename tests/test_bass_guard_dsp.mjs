@@ -114,3 +114,39 @@ const subsonicRatio = Math.sqrt(subsonicOutputPower / subsonicFrames) / Math.sqr
 assert.ok(subsonicRatio < 0.6, "30Hz high-pass musí výrazně odlehčit neslyšitelným 20Hz vibracím");
 
 console.log(JSON.stringify({ outputPeak, transientPeak, subsonicRatio, latest }));
+
+// The same musical spectrum, mastered 18 dB apart, must converge on the
+// same output. Test both change directions in one continuous processor.
+const leveling = new ProcessorClass({ processorOptions: { config: {
+  audio_mode: "bass_guard", target_lufs: -17,
+  limiter_ceiling_db: -4, bass_guard_strength: 100,
+} } });
+let clock = 0;
+function segment(amplitude, seconds = 8) {
+  let power = 0, count = 0, peak = 0;
+  const blocks = Math.ceil(seconds * 48000 / 128);
+  for (let block = 0; block < blocks; block++) {
+    const signal = new Float32Array(128);
+    for (let i = 0; i < 128; i++, clock++) {
+      const t = clock / 48000;
+      signal[i] = amplitude * (0.6 * Math.sin(2 * Math.PI * 60 * t)
+        + 0.3 * Math.sin(2 * Math.PI * 1000 * t));
+    }
+    const output = [new Float32Array(128), new Float32Array(128)];
+    leveling.process([[signal, signal]], [output]);
+    for (const value of output[0]) {
+      peak = Math.max(peak, Math.abs(value));
+      if (block > blocks - 375) { power += value * value; count++; }
+    }
+  }
+  assert.ok(peak <= 10 ** (-4 / 20) + 1e-7, "Every output sample respects the ceiling");
+  return 10 * Math.log10(Math.max(1e-12, power / count));
+}
+const quiet = segment(0.12);
+const loud = segment(0.95);
+const quietAgain = segment(0.12);
+assert.ok(Math.abs(quiet - loud) < 2, `Mastering mismatch: ${quiet} vs ${loud} dB`);
+assert.ok(Math.abs(loud - quietAgain) < 2, `Quiet-track recovery: ${quietAgain} dB`);
+segment(0, 4);
+assert.ok(leveling.levelGain <= 1.1, "Silence must not build up gain");
+console.log(JSON.stringify({ quiet, loud, quietAgain }));

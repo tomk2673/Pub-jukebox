@@ -384,7 +384,8 @@ def test_tv_player_blocks_customer_youtube_controls(tmp_path, monkeypatch):
         assert 'id="playerA"' in tv.text
         assert 'id="playerB"' in tv.text
         assert 'class="tv-qr"' in tv.text
-        assert "VYBER DALŠÍ SKLADBU" in tv.text
+        assert "HUDBU VYBÍRÁŠ TY" in tv.text
+        assert "Namiř sem foťák telefonu" in tv.text
         assert "disablekb: 1" in script.text
         assert "fs: 0" in script.text
         assert "origin: window.location.origin" in script.text
@@ -613,7 +614,7 @@ def test_bass_guard_has_safe_offline_profile_and_failure_cleanup():
     assert "bass_guard_strength: 100" in source
     assert "readProfile().catch(() => SAFE_PROFILE)" in source
     assert "catch (error) {\n    await stop();\n    throw error;" in source
-    assert '"version": "0.2.0"' in manifest
+    assert '"version": "0.3.0"' in manifest
 
 
 def test_guest_access_can_be_locked_to_bar_network(tmp_path, monkeypatch):

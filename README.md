@@ -1,4 +1,12 @@
-# PUB Jukebox 1.9.1
+# PUB Jukebox 1.9.2
+
+## Opravy provozu 13. září 2026
+
+- Produkční CHECK constraint blokoval AutoDJ prioritu -100. Migrace dovoluje tuto hodnotu pouze pro systémové AutoDJ položky; hosté stále mají přednost. Ověřeno na PostgreSQL vložením s následným rollbackem.
+- TV má výrazně větší QR a postup „Namiř sem foťák telefonu → vyhledej píseň → + Do fronty“, s plným bílým okrajem QR.
+- Bass Guard 0.3.0 měří hlasitost po basovém filtru, používá rychlejší dorovnání s branou proti zesilování ticha a skutečný low-shelf místo odečítání low-pass signálu. Basová ochrana zahrnuje i oblast kolem 150 Hz. Výstupní vzorky nepřekročí strop limiteru.
+- Audio test střídá dvě nahrávky stejného spektra s rozdílem 18 dB a ověřuje ustálený rozdíl pod 2 dB. Nejde o záruku stejné vnímané hlasitosti libovolných skladeb ani o měření hluku u sousedů.
+- Nový DSP vyžaduje aktualizaci rozbaleného Windows rozšíření; samotná aktualizace webu ho nevymění. Stav připojení lze kontrolovat i z administrace na iPhonu.
 
 Webový jukebox pro bar. Host načte QR kód, vyhledá skladbu podle názvu na YouTube, přidá ji do společné fronty a může jednou hlasovat. Obsluha řídí pořadí a TV přehrává frontu automaticky.
 
