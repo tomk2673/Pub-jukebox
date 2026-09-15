@@ -248,6 +248,9 @@ def init_db() -> None:
         for column, definition in venue_migrations.items():
             if column not in venue_columns:
                 conn.execute(f"ALTER TABLE venue_settings ADD COLUMN {column} {definition}")
+        audio_columns = {row["name"] for row in conn.execute("PRAGMA table_info(audio_processors)")}
+        if "applied_profile" not in audio_columns:
+            conn.execute("ALTER TABLE audio_processors ADD COLUMN applied_profile TEXT")
         conn.execute("UPDATE queue SET created_at=id WHERE created_at=0")
         conn.commit()
 
@@ -350,6 +353,13 @@ class VenueSettingsUpdate(BaseModel):
     bass_guard_strength: int = Field(default=65, ge=0, le=100)
 
 
+class AudioSettings(BaseModel):
+    audio_mode: Literal["standard", "bass_guard"]
+    target_lufs: int = Field(ge=-24, le=-8)
+    limiter_ceiling_db: float = Field(ge=-6.0, le=0.0)
+    bass_guard_strength: int = Field(ge=0, le=100)
+
+
 class AudioProcessorHeartbeat(BaseModel):
     device_name: str = Field(default="Windows Chrome", max_length=80)
     extension_version: str = Field(default="", max_length=24)
@@ -357,6 +367,7 @@ class AudioProcessorHeartbeat(BaseModel):
     gain_db: float = Field(default=0.0, ge=-24.0, le=24.0)
     bass_reduction_db: float = Field(default=0.0, ge=0.0, le=30.0)
     limiter_reduction_db: float = Field(default=0.0, ge=0.0, le=30.0)
+    applied_profile: AudioSettings | None = None
 
 
 class NetworkLockUpdate(BaseModel):
@@ -587,10 +598,20 @@ def audio_processor_status() -> dict:
             ).fetchone()
         result = dict(row) if row else {}
     last_seen = int(result.get("last_seen") or 0)
-    connected = last_seen > 0 and now() - last_seen <= 18
+    connected = last_seen > 0 and 0 <= now() - last_seen <= 18
+    applied = result.get("applied_profile")
+    if isinstance(applied, str):
+        applied = json.loads(applied)
+    profile = venue_settings()
+    desired = {key: profile[key] for key in AudioSettings.model_fields}
+    confirmed = connected and applied == desired
     return {
         "connected": connected,
-        "status": "Aktivní na Windows" if connected else "Čeká na Windows modul",
+        "status": "Spojení s PC funguje" if connected else "Stav PC není dostupný; ochrana může dál běžet.",
+        "applied_profile": applied,
+        "desired_profile": desired,
+        "settings_confirmed": confirmed,
+        "processing": connected and isinstance(applied, dict) and applied.get("audio_mode") == "bass_guard",
         "device_name": result.get("device_name", ""),
         "extension_version": result.get("extension_version", ""),
         "measured_lufs": result.get("measured_lufs"),
@@ -598,6 +619,7 @@ def audio_processor_status() -> dict:
         "bass_reduction_db": float(result.get("bass_reduction_db") or 0),
         "limiter_reduction_db": float(result.get("limiter_reduction_db") or 0),
         "last_seen": last_seen,
+        "age_seconds": max(0, now() - last_seen) if last_seen else None,
     }
 
 
@@ -609,6 +631,7 @@ def record_audio_heartbeat(payload: AudioProcessorHeartbeat) -> dict:
         "gain_db": round(payload.gain_db, 2),
         "bass_reduction_db": round(payload.bass_reduction_db, 2),
         "limiter_reduction_db": round(payload.limiter_reduction_db, 2),
+        "applied_profile": payload.applied_profile.model_dump() if payload.applied_profile else None,
     }
     if USE_SUPABASE:
         result = settings_rpc("processor_heartbeat", values)
@@ -620,8 +643,8 @@ def record_audio_heartbeat(payload: AudioProcessorHeartbeat) -> dict:
                 """
                 INSERT INTO audio_processors(
                     venue_key,device_name,extension_version,measured_lufs,gain_db,
-                    bass_reduction_db,limiter_reduction_db,last_seen
-                ) VALUES(?,?,?,?,?,?,?,?)
+                    bass_reduction_db,limiter_reduction_db,last_seen,applied_profile
+                ) VALUES(?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(venue_key) DO UPDATE SET
                     device_name=excluded.device_name,
                     extension_version=excluded.extension_version,
@@ -629,7 +652,8 @@ def record_audio_heartbeat(payload: AudioProcessorHeartbeat) -> dict:
                     gain_db=excluded.gain_db,
                     bass_reduction_db=excluded.bass_reduction_db,
                     limiter_reduction_db=excluded.limiter_reduction_db,
-                    last_seen=excluded.last_seen
+                    last_seen=excluded.last_seen,
+                    applied_profile=excluded.applied_profile
                 """,
                 (
                     VENUE_KEY,
@@ -640,6 +664,7 @@ def record_audio_heartbeat(payload: AudioProcessorHeartbeat) -> dict:
                     values["bass_reduction_db"],
                     values["limiter_reduction_db"],
                     now(),
+                    json.dumps(values["applied_profile"]) if values["applied_profile"] else None,
                 ),
             )
             conn.commit()
@@ -1116,6 +1141,7 @@ def admin_login(payload: PinLogin, request: Request, response: Response):
 @app.post("/api/admin/logout")
 def admin_logout(response: Response):
     response.delete_cookie("jukebox_admin")
+    response.delete_cookie("jukebox_audio", path="/api/admin/audio/heartbeat")
     return {"ok": True}
 
 
@@ -1166,9 +1192,37 @@ def get_audio_processor_status(request: Request):
 
 
 @app.post("/api/admin/audio/heartbeat")
-def audio_processor_heartbeat(payload: AudioProcessorHeartbeat, request: Request):
+def audio_processor_heartbeat(payload: AudioProcessorHeartbeat, request: Request, response: Response):
+    # This cookie grants telemetry only, never admin controls. Existing extensions
+    # use same-origin fetch and can keep reporting after the 12-hour admin login.
+    paired = read_token(request.cookies.get("jukebox_audio"), "audio", 30 * 24 * 3600) == VENUE_KEY
+    if not paired and not is_admin(request):
+        raise HTTPException(401, "Na barovém PC otevři administraci a přihlas se PINem.")
+    result = record_audio_heartbeat(payload)
+    response.set_cookie(
+        "jukebox_audio", make_token("audio", VENUE_KEY),
+        max_age=30 * 24 * 3600, httponly=True, secure=cookie_secure(request),
+        samesite="strict", path="/api/admin/audio/heartbeat",
+    )
+    return result
+
+
+@app.put("/api/admin/audio/settings")
+def save_audio_settings(payload: AudioSettings, request: Request):
     require_admin(request)
-    return record_audio_heartbeat(payload)
+    values = payload.model_dump()
+    if USE_SUPABASE:
+        settings_rpc("update", values)
+    else:
+        with connection() as conn:
+            conn.execute(
+                """UPDATE venue_settings SET audio_mode=?,target_lufs=?,
+                limiter_ceiling_db=?,bass_guard_strength=?,revision=revision+1,updated_at=?
+                WHERE venue_key=?""",
+                (*values.values(), now(), VENUE_KEY),
+            )
+            conn.commit()
+    return audio_processor_status()
 
 
 @app.put("/api/admin/network")

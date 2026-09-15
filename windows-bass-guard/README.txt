@@ -36,3 +36,18 @@ Důležité
 - Režim Bass Guard PRO se řídí hodnotami LUFS, limitu a ochrany basů v administraci.
 - Při krátkém výpadku internetu zůstane aktivní bezpečný profil −17 LUFS / −4 dB / 100 % ochrany basů.
 - Před ostrým večerem vyzkoušej profil při nižší hlasitosti a sílu basů dolaď podle aparatury.
+
+
+OVLÁDÁNÍ Z MOBILU — verze 0.3.1
+Na iPhonu nebo Androidu otevři administraci stejného jukeboxu a přihlas se.
+Nastav hlasitost, ochranu basů a limiter; klepni na „Použít zvuk na PC“.
+Změnu potvrzuje skutečné nastavení DSP, obvykle během 10 sekund.
+„Stav neznámý“ znamená chybějící zprávu, nikoli jistotu vypnuté ochrany.
+Při AUTH na ikoně se na barovém PC přihlas do administrace ve stejném profilu Chromu jako TV.
+Spojení pro hlášení stavu se pak obnovuje samostatně i po vypršení admin přihlášení.
+Odhlášení na PC toto spojení zruší; další přihlášení je obnoví.
+
+AKTUALIZACE
+Během pauzy hudby nahraď soubory ve složce rozšíření tímto balíkem.
+Na chrome://extensions klikni na Obnovit, pak na TV kartě na ikonu Bass Guard.
+První spuštění zachytávání vyžaduje kliknutí na PC, nelze je zapnout z telefonu.

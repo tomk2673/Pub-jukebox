@@ -147,11 +147,11 @@
                 <div class="field-label">Zvukový procesor</div>
                 <strong>Night Bass Guard</strong>
               </div>
-              <span class="processor-state" id="processorState">NEPŘIPOJEN</span>
+              <span class="processor-state" id="processorState">OVĚŘUJI STAV</span>
             </div>
             <p class="small muted module-copy">Vyrovnává hlasitost skladeb, zachytí špičky a dynamicky stáhne jen nadbytečné basy. Skutečné zpracování provádí místní zvukový modul u aparatury.</p>
             <div class="processor-detail">
-              <span class="small muted" id="processorMetrics">Na barovém počítači zatím neběží.</span>
+              <span class="small muted" id="processorMetrics">Čekám na aktuální zprávu z PC.</span>
               <a class="btn secondary compact" href="/static/night-bass-guard-windows.zip" download>Stáhnout Windows modul</a>
             </div>
             <details class="install-guide">
@@ -160,7 +160,7 @@
                 <li>Rozbal stažený ZIP do stálé složky.</li>
                 <li>V Chromu otevři <code>chrome://extensions</code> a zapni Režim pro vývojáře.</li>
                 <li>Zvol Načíst rozbalené a vyber rozbalenou složku.</li>
-                <li>Otevři TV, přihlas ji PINem a klikni na ikonu Night Bass Guard. Zelené ON znamená, že ochrana běží.</li>
+                <li>Otevři TV, přihlas ji PINem a klikni na ikonu Night Bass Guard. Stav ochrany ověř v administraci.</li>
               </ol>
             </details>
             <div class="mode-picker audio-picker">
@@ -179,7 +179,16 @@
               <label>Limit špiček <strong id="limiterValue">−1.0 dB</strong><input id="limiterCeiling" type="range" min="-6" max="0" step="0.5" value="-1"></label>
             </div>
             <div class="settings-actions">
-              <p class="small muted">Změna se na TV projeví během několika sekund.</p>
+              <button class="btn" id="saveAudioButton" type="button">Použít zvuk na PC</button>
+            </div>
+            <div class="status" id="audioSaveStatus" role="status" aria-live="polite"></div>
+            <details class="small">
+              <summary>Mobil nevidí běžící ochranu?</summary>
+              <p>Na barovém PC otevři administraci na stejné adrese jako v telefonu a přihlas se PINem. TV musí běžet ve stejném profilu Chromu. Do 10 sekund se má objevit stav spojení.</p>
+              <p>Pro potvrzení nastavení potřebuješ Windows modul 0.3.1. Stáhni jej na PC, nahraď soubory rozšíření a v chrome://extensions klikni na Obnovit. Potom na TV kartě jednou zapni Bass Guard. Aktualizaci dělej při pauze hudby.</p>
+            </details>
+            <div class="settings-actions">
+              <p class="small muted">Zvuk ovládáš i z iPhonu nebo Androidu. První spuštění zachytávání zvuku vyžaduje kliknutí na ikonu rozšíření na PC.</p>
               <button class="btn" type="submit">Uložit a přepnout TV</button>
             </div>
             <div class="status" id="displayStatus" role="status"></div>

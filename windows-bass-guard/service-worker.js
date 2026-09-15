@@ -76,12 +76,14 @@ async function heartbeat(tabId, metrics) {
           headers: { "content-type": "application/json" },
           body: JSON.stringify(payload),
         });
-        return response.ok;
+        return { ok: response.ok, status: response.status };
       },
       args: [metrics],
     });
-    if (results[0]?.result) await badge(tabId, "ON", "#259b67", "Night Bass Guard je aktivní");
-    else await badge(tabId, "AUTH", "#ff9f2f", "TV musí být přihlášená admin PINem");
+    const result = results[0]?.result;
+    if (result?.ok) await badge(tabId, "ON", "#259b67", "Bass Guard posílá živý stav do mobilu");
+    else if (result?.status === 401) await badge(tabId, "AUTH", "#ff9f2f", "Na tomto PC otevři administraci jukeboxu a přihlas se PINem");
+    else await badge(tabId, "SYNC", "#ff9f2f", "Bass Guard běží, ale server nepřijal stav. Zkus obnovit přihlášení v administraci.");
   } catch (_) {
     await badge(tabId, "ERR", "#ff5c68", "Bass Guard běží, ale neodesílá stav");
   }

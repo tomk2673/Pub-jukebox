@@ -259,17 +259,93 @@ async function updateNetwork(action) {
 }
 
 function renderAudioProcessor() {
-  const processor = state.config.audio_processor || {};
-  $("processorState").textContent = processor.connected ? "PŘIPOJEN" : "NEPŘIPOJEN";
-  $("processorState").classList.toggle("connected", Boolean(processor.connected));
-  if (!processor.connected) {
-    $("processorMetrics").textContent = processor.status || "Na barovém počítači zatím neběží.";
-    return;
+  const processor = state.config?.audio_processor || {};
+  const age = processor.age_seconds == null ? null
+    : processor.age_seconds + (Date.now() - (state.audioReceivedAt || Date.now())) / 1000;
+  const connected = processor.connected && age != null && age <= 18 && !state.audioUnavailable;
+  const confirmed = connected && processor.settings_confirmed;
+  $("processorState").textContent = !connected ? "STAV NEZNÁMÝ"
+    : !processor.applied_profile ? "PC PŘIPOJENO"
+    : processor.processing ? "OCHRANA BĚŽÍ" : "OCHRANA VYPNUTÁ";
+  $("processorState").classList.toggle("connected", Boolean(connected && processor.processing));
+  if (!connected) {
+    $("processorMetrics").textContent = "Chybí aktuální zpráva z PC. Ochrana může dál běžet; její stav teď nelze ověřit.";
+  } else {
+    const lufs = processor.measured_lufs == null ? "měřím" : `${Number(processor.measured_lufs).toFixed(1)} LUFS`;
+    const bass = Number(processor.bass_reduction_db || 0).toFixed(1);
+    const limiter = Number(processor.limiter_reduction_db || 0).toFixed(1);
+    $("processorMetrics").textContent = `${processor.device_name || "Windows"} · verze ${processor.extension_version || "?"} · ${lufs} · basy −${bass} dB · limiter −${limiter} dB · zpráva před ${Math.floor(age)} s`;
   }
-  const lufs = processor.measured_lufs == null ? "měřím" : `${Number(processor.measured_lufs).toFixed(1)} LUFS`;
-  const bass = Number(processor.bass_reduction_db || 0).toFixed(1);
-  const limiter = Number(processor.limiter_reduction_db || 0).toFixed(1);
-  $("processorMetrics").textContent = `${processor.device_name || "Windows"} · ${lufs} · basy −${bass} dB · limiter −${limiter} dB`;
+  if (state.audioSaving || state.audioDirty || state.audioSaveError) return;
+  const message = !connected ? "Nastavení uložené na serveru. Převzetí počítačem zatím není potvrzené."
+    : !processor.applied_profile ? "PC posílá stav. Pro potvrzení nastavení aktualizuj Windows modul na 0.3.1."
+    : confirmed ? "PC potvrdilo nastavení zvuku."
+    : "Čekám, až PC převezme uložené nastavení…";
+  $("audioSaveStatus").textContent = message;
+  $("audioSaveStatus").className = confirmed ? "status success" : "status";
+}
+
+function markAudioDirty() {
+  state.audioDirty = true;
+  state.audioSaveError = false;
+  $("audioSaveStatus").textContent = "Změny zvuku nejsou odeslané. Klepni na Použít zvuk na PC.";
+  $("audioSaveStatus").className = "status";
+}
+
+async function saveAudioSettings() {
+  if (state.audioSaving) return;
+  state.audioSaving = true;
+  state.audioSaveError = false;
+  state.audioDirty = false;
+  $("saveAudioButton").disabled = true;
+  $("audioSaveStatus").textContent = "Odesílám nastavení zvuku…";
+  const profile = {
+    audio_mode: document.querySelector('input[name="audioMode"]:checked')?.value || "standard",
+    target_lufs: Number($("targetLufs").value),
+    limiter_ceiling_db: Number($("limiterCeiling").value),
+    bass_guard_strength: Number($("bassStrength").value),
+  };
+  try {
+    const processor = await api("/api/admin/audio/settings", { method: "PUT", body: JSON.stringify(profile) });
+    state.config = { ...state.config, ...profile, audio_processor: processor };
+    state.audioReceivedAt = Date.now();
+    state.audioUnavailable = false;
+  } catch (error) {
+    state.audioSaveError = true;
+    $("audioSaveStatus").textContent = `Neodesláno: ${error.message}`;
+    $("audioSaveStatus").className = "status error";
+  } finally {
+    state.audioSaving = false;
+    $("saveAudioButton").disabled = false;
+    renderAudioProcessor();
+  }
+}
+
+async function refreshAudio() {
+  if (!state.config || state.audioPolling) return;
+  state.audioPolling = true;
+  try {
+    const processor = await api("/api/admin/audio/status");
+    state.config.audio_processor = processor;
+    state.audioReceivedAt = Date.now();
+    state.audioUnavailable = false;
+    if (!state.audioDirty && !state.audioSaving && processor.desired_profile) {
+      const desired = processor.desired_profile;
+      Object.assign(state.config, desired);
+      $("targetLufs").value = desired.target_lufs;
+      $("bassStrength").value = desired.bass_guard_strength;
+      $("limiterCeiling").value = desired.limiter_ceiling_db;
+      for (const input of document.querySelectorAll('input[name="audioMode"]')) {
+        input.checked = input.value === desired.audio_mode;
+      }
+      renderAudioValues();
+    }
+  } catch (_) {
+    state.audioUnavailable = true;
+  } finally {
+    state.audioPolling = false;
+    renderAudioProcessor();
+  }
 }
 
 function renderAudioValues() {
@@ -308,7 +384,10 @@ async function saveVenueSettings(event) {
     state.config = { ...state.config, ...saved, bar_name: saved.business_name };
     $("brandName").textContent = saved.business_name;
     renderVenueSettings();
-    displayStatus("Uloženo. TV se právě přepíná.", "success");
+    state.audioDirty = false;
+    state.audioSaveError = false;
+    await refreshAudio();
+    displayStatus("Uloženo. Potvrzení zvuku sleduj u Bass Guardu.", "success");
   } catch (error) {
     displayStatus(error.message, "error");
   }
@@ -317,13 +396,13 @@ async function saveVenueSettings(event) {
 async function loadAll(silent = false) {
   try {
     const firstLoad = !state.config;
-    const [config, queue, player, audioProcessor] = await Promise.all([
+    const [config, queue, player] = await Promise.all([
       firstLoad ? api("/api/admin/config") : Promise.resolve(state.config),
       api("/api/queue"),
       api("/api/player/state"),
-      firstLoad ? Promise.resolve(null) : api("/api/admin/audio/status"),
     ]);
-    state.config = audioProcessor ? { ...config, audio_processor: audioProcessor } : config;
+    state.config = config;
+    if (firstLoad) state.audioReceivedAt = Date.now();
     state.queue = queue;
     state.player = player;
     $("brandName").textContent = config.bar_name;
@@ -378,11 +457,12 @@ function wireEvents() {
   $("loginForm").addEventListener("submit", login);
   $("adminSearchForm").addEventListener("submit", searchAsAdmin);
   $("displayForm").addEventListener("submit", saveVenueSettings);
-  for (const input of document.querySelectorAll('input[name="audioMode"]')) input.addEventListener("change", renderAudioValues);
+  for (const input of document.querySelectorAll('input[name="audioMode"]')) input.addEventListener("change", () => { renderAudioValues(); markAudioDirty(); });
   for (const input of document.querySelectorAll('input[name="transitionMode"]')) input.addEventListener("change", renderTransitionValues);
   $("transitionVolume").addEventListener("input", renderTransitionValues);
   $("autodjEnabled").addEventListener("change", renderAutoDjValues);
-  for (const id of ["targetLufs", "bassStrength", "limiterCeiling"]) $(id).addEventListener("input", renderAudioValues);
+  for (const id of ["targetLufs", "bassStrength", "limiterCeiling"]) $(id).addEventListener("input", () => { renderAudioValues(); markAudioDirty(); });
+  $("saveAudioButton").addEventListener("click", saveAudioSettings);
   $("startButton").addEventListener("click", () => playerAction("/api/player/start", "Přehrávač spuštěn."));
   $("nextButton").addEventListener("click", () => playerAction("/api/player/next", "Přeskakuji na další skladbu."));
   $("pauseButton").addEventListener("click", () => control("pause"));
@@ -407,11 +487,19 @@ function wireEvents() {
 
 async function boot() {
   wireEvents();
+  setInterval(() => {
+    if (!$("adminView").classList.contains("hidden") && !document.hidden) {
+      loadAll(true);
+      refreshAudio();
+    }
+  }, 2500);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) { state.audioUnavailable = true; renderAudioProcessor(); refreshAudio(); }
+  });
   const me = await api("/api/me").catch(() => ({ admin: false }));
   if (!me.admin) return showLogin();
   showAdmin();
   await loadAll();
-  setInterval(() => loadAll(true), 2500);
 }
 
 boot();

@@ -238,6 +238,12 @@ class NightBassGuardProcessor extends AudioWorkletProcessor {
       this.port.postMessage({
         type: "metrics",
         metrics: {
+          applied_profile: {
+            audio_mode: this.config.enabled ? "bass_guard" : "standard",
+            target_lufs: this.config.targetLufs,
+            limiter_ceiling_db: this.config.ceilingDb,
+            bass_guard_strength: this.config.bassStrength,
+          },
           measured_lufs: Number.isFinite(measured) ? Math.round(measured * 10) / 10 : null,
           gain_db: Math.round(gainToDb(this.levelGain) * 100) / 100,
           bass_reduction_db: Math.round(-gainToDb(this.bassGain) * 100) / 100,

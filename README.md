@@ -1,5 +1,15 @@
 # PUB Jukebox 1.9.2
 
+## Ovládání Bass Guardu z mobilu — 15. září 2026
+
+- Samostatné tlačítko „Použít zvuk na PC“ ukládá pouze zvukový profil.
+- Modul 0.3.1 hlásí nastavení skutečně používané DSP. Mobil odděluje uložené nastavení od potvrzeného převzetí a rozlišuje aktivní ochranu, bypass a nedostupný stav.
+- Po prvním úspěšném hlášení se používá samostatná podepsaná HttpOnly cookie pouze pro telemetrii, obnovovaná při hlášení. Neopravňuje k administraci a přežije vypršení 12hodinového přihlášení. Odhlášení na daném PC ji ruší.
+- Pokud mobil PC nevidí, přihlaste se na PC do administrace na stejné adrese a ve stejném profilu Chromu jako TV.
+- Pro potvrzování nastavení aktualizujte rozbalené rozšíření na 0.3.1 a během pauzy hudby jej obnovte v chrome://extensions; potom zapněte zachytávání na TV kartě.
+- Databázová migrace přidává pouze applied_profile k telemetrii. Starší modul zůstává kompatibilní, ale nemůže potvrdit skutečně použitý profil.
+
+
 ## Opravy provozu 13. září 2026
 
 - Produkční CHECK constraint blokoval AutoDJ prioritu -100. Migrace dovoluje tuto hodnotu pouze pro systémové AutoDJ položky; hosté stále mají přednost. Ověřeno na PostgreSQL vložením s následným rollbackem.
@@ -90,7 +100,7 @@ Výchozí lokální PIN je `2673`. Pro ostré nasazení je povinné ho změnit p
 2. V Google Chrome otevři `chrome://extensions`, zapni Režim pro vývojáře a zvol **Načíst rozbalené**.
 3. Vyber rozbalenou složku a připni rozšíření k liště Chromu.
 4. Otevři `/tv`, přihlas TV admin PINem a klikni jednou na ikonu Night Bass Guard.
-5. Zelené `ON` na ikoně a stav **PŘIPOJEN** v administraci potvrzují, že zvuk prochází procesorem.
+5. Zelené `ON` na ikoně a stav **OCHRANA BĚŽÍ** v administraci ukazují připojení a aktivní profil DSP.
 
 Modul zachytává pouze zvuk karty s TV přehrávačem. Třísekundový K-vážený odhad hlasitosti plynule dorovnává rozdíly mezi skladbami, dynamický filtr stáhne jen nadměrnou energii pod 120 Hz a limiter s šestimilisekundovým předstihem hlídá špičky. Nastavení se načítá z profilu provozovny každé čtyři sekundy.
 
@@ -129,3 +139,4 @@ Profil provozovny je oddělený od zdrojového kódu pomocí `VENUE_KEY`. V data
 Night Bass Guard je praktický adaptivní procesor pro provoz baru, ne certifikovaný měřicí přístroj EBU R128. Cílové LUFS proto představuje průběžný K-vážený odhad, který je vhodné doladit podle konkrétní aparatury a prostoru. Bez zapnutého Windows rozšíření zůstává zvuk YouTube beze změny a administrace pravdivě zobrazuje procesor jako nepřipojený.
 
 Veřejné přehrávání hudby a komerční použití musí provozovatel řešit v souladu s podmínkami YouTube a příslušnými hudebními licencemi. Skladby se přidávají rovnou do fronty a jejich pořadí mění hlasování hostů; obsluha nic nepotvrzuje.
+
