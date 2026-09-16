@@ -27,6 +27,18 @@ let autoDjBusy = false;
 let nextAutoDjAttempt = 0;
 let outroTriggeredVideo = null;
 let outroCheckBusy = false;
+let playbackEnabled = true;
+let playbackRetryAt = 0;
+let syncBusy = false;
+
+function isMobileViewer() {
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+    || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+function isUnavailableVideo(error) {
+  return [100, 101, 150].includes(Number(error?.youtubeCode));
+}
 
 const MIX_LEAD_SECONDS = 9.0;
 const DJ_OUTRO_LEAD_SECONDS = MIX_LEAD_SECONDS;
@@ -44,6 +56,10 @@ const TRANSITION_VARIANTS = Object.freeze([
 ]);
 
 async function api(path, options = {}) {
+  if (!playbackEnabled && options.method && options.method !== "GET"
+      && path !== "/api/admin/login") {
+    throw new Error("Mobilní náhled nemění přehrávání ani frontu.");
+  }
   const response = await fetch(path, {
     ...options,
     headers: { ...(options.body ? { "content-type": "application/json" } : {}), ...(options.headers || {}) },
@@ -219,7 +235,7 @@ async function makeSureNextSongExists() {
 }
 
 async function preloadNextSong() {
-  if (!deckReady.every(Boolean) || transitioning) return null;
+  if (!playbackEnabled || !authenticated || !deckReady.every(Boolean) || transitioning) return null;
   const queued = await makeSureNextSongExists();
   const next = queued[0] || null;
   if (!next) {
@@ -308,8 +324,11 @@ async function prepareReservedNextSong(currentSongId, incoming) {
     attempted.add(next.id);
     try {
       await startIncomingSong(incoming, next);
-    } catch (_) {
+    } catch (error) {
       resetDeck(incoming);
+      // A slow connection or autoplay restriction says nothing about the song.
+      // Preserve the queue and retry the same candidate; never fall back to AutoDJ.
+      if (!isUnavailableVideo(error)) throw error;
       await api(`/api/queue/${next.id}`, { method: "DELETE" }).catch(() => null);
       continue;
     }
@@ -351,7 +370,7 @@ async function crossfadeDecks(outgoing, incoming, durationMs = MIX_DURATION_MS) 
 }
 
 async function finishCurrentSong(earlyMix = false) {
-  if (transitioning) return;
+  if (!playbackEnabled || !authenticated || transitioning || Date.now() < playbackRetryAt) return;
   const currentSongId = Number(currentSong?.id);
   if (!Number.isInteger(currentSongId) || currentSongId <= 0) {
     await sync(true);
@@ -401,13 +420,15 @@ async function finishCurrentSong(earlyMix = false) {
     } else {
       resetDeck(incoming);
       players[outgoing]?.setVolume(effectiveVolume);
+      playbackRetryAt = Date.now() + 5000;
+      outroTriggeredVideo = null;
       setTimeout(() => {
         const deck = players[activeDeck];
         if (
           Number(currentSong?.id) === currentSongId
           && deck?.getPlayerState?.() !== YT.PlayerState.PLAYING
         ) finishCurrentSong(false);
-      }, 1000);
+      }, 5100);
     }
   } finally {
     transitioning = false;
@@ -417,7 +438,8 @@ async function finishCurrentSong(earlyMix = false) {
 }
 
 async function monitorDjOutro() {
-  if (!deckReady[activeDeck] || transitioning || outroCheckBusy || !currentVideo) return;
+  if (!playbackEnabled || !authenticated || Date.now() < playbackRetryAt
+      || !deckReady[activeDeck] || transitioning || outroCheckBusy || !currentVideo) return;
   const deck = players[activeDeck];
   if (!deck || deck.getPlayerState() !== YT.PlayerState.PLAYING) return;
   const duration = Number(deck.getDuration?.() || 0);
@@ -442,6 +464,7 @@ window.onYouTubeIframeAPIReady = () => {
 };
 
 function onDeckReady(index) {
+  if (!playbackEnabled) return;
   deckReady[index] = true;
   styleDeck(index);
   players[index].setVolume(index === activeDeck ? effectiveVolume : 0);
@@ -452,6 +475,7 @@ function onDeckReady(index) {
 }
 
 function onDeckStateChange(index, event) {
+  if (!playbackEnabled) return;
   if (event.data === YT.PlayerState.PLAYING) {
     deckErrors[index] = null;
     settleDeckPlayback(index);
@@ -468,11 +492,13 @@ function onDeckStateChange(index, event) {
 }
 
 function onDeckError(index, event) {
+  if (!playbackEnabled) return;
   const error = new Error(`YouTube video nelze přehrát (${event?.data || "neznámá chyba"}).`);
   error.youtubeCode = event?.data;
   deckErrors[index] = error;
   settleDeckPlayback(index, error);
-  if (index === activeDeck && !transitioning) finishCurrentSong(false);
+  if (index === activeDeck && !transitioning && isUnavailableVideo(error)) finishCurrentSong(false);
+  else if (index === activeDeck) $("tapToPlay").classList.remove("hidden");
 }
 
 function makeDeck(index, elementId) {
@@ -494,12 +520,16 @@ function makeDeck(index, elementId) {
       onReady: () => onDeckReady(index),
       onStateChange: (event) => onDeckStateChange(index, event),
       onError: (event) => onDeckError(index, event),
+      onAutoplayBlocked: () => {
+        $("tapToPlay").classList.remove("hidden");
+        settleDeckPlayback(index, new Error("Prohlížeč čeká na povolení přehrávání."));
+      },
     },
   });
 }
 
 function createPlayers() {
-  if (!apiReady || players[0] || players[1]) return;
+  if (!playbackEnabled || !apiReady || players[0] || players[1]) return;
   if (!$("playerA") || !$("playerB")) return;
   players[0] = makeDeck(0, "playerA");
   players[1] = makeDeck(1, "playerB");
@@ -552,7 +582,7 @@ function applyDisplay(display) {
 }
 
 async function ensureAutoDjBuffer(state) {
-  if (!autoDjEnabled || autoDjBusy || Date.now() < nextAutoDjAttempt) return;
+  if (!playbackEnabled || !authenticated || !autoDjEnabled || autoDjBusy || Date.now() < nextAutoDjAttempt) return;
   autoDjBusy = true;
   nextAutoDjAttempt = Date.now() + 30000;
   try {
@@ -571,6 +601,8 @@ async function ensureAutoDjBuffer(state) {
 
 function showSong(song) {
   currentSong = song || null;
+  $("observerTitle").textContent = song?.title || "Teď není vybraná skladba";
+  $("observerArtist").textContent = song?.artist || "";
   const hasSong = Boolean(song);
   document.body.classList.toggle("has-song", hasSong);
   $("idleView").classList.toggle("hidden", hasSong || displayMode !== "clip");
@@ -589,6 +621,7 @@ async function applyState(state, force = false) {
   effectiveVolume = state.night_mode ? Math.min(state.volume, nightVolume) : state.volume;
   if (transitioning) return;
   showSong(song);
+  if (!playbackEnabled) return;
   if (!deckReady.every(Boolean)) return;
 
   setAllDeckVolumes();
@@ -621,7 +654,8 @@ async function applyState(state, force = false) {
 }
 
 async function sync(force = false) {
-  if (!authenticated) return;
+  if (!authenticated || syncBusy) return;
+  syncBusy = true;
   try {
     const [state, display] = await Promise.all([api("/api/player/state"), api("/api/display")]);
     applyDisplay(display);
@@ -632,6 +666,8 @@ async function sync(force = false) {
       authenticated = false;
       $("loginView").classList.remove("hidden");
     }
+  } finally {
+    syncBusy = false;
   }
 }
 
@@ -643,6 +679,8 @@ async function startTv() {
   $("qr").src = `/api/admin/qr.svg?t=${Date.now()}`;
   $("loginView").classList.add("hidden");
   createPlayers();
+  await sync(true);
+  if (!playbackEnabled) return;
   if (deckReady.every(Boolean)) {
     await api("/api/player/start", { method: "POST" });
     await sync(true);
@@ -664,6 +702,20 @@ async function login(event) {
 }
 
 async function boot() {
+  playbackEnabled = !isMobileViewer();
+  document.body.dataset.observer = String(!playbackEnabled);
+  $("observerView").classList.toggle("hidden", playbackEnabled);
+  if (!playbackEnabled) {
+    $("loginForm").querySelector('button[type="submit"]').textContent = "Otevřít náhled TV";
+  }
+  $("enablePlayback").addEventListener("click", async () => {
+    if (!authenticated) return;
+    playbackEnabled = true;
+    document.body.dataset.observer = "false";
+    $("observerView").classList.add("hidden");
+    unlockTransitionAudio();
+    await startTv();
+  });
   document.body.dataset.mode = "clip";
   $("loginForm").addEventListener("submit", login);
   $("tapToPlay").addEventListener("click", () => {

@@ -13,6 +13,20 @@
   <title>TV · PUB Jukebox</title>
 </head>
 <body>
+  <section class="observer-view hidden" id="observerView">
+    <div class="observer-card">
+      <span class="observer-label">NÁHLED TV · ŽIVÝ STAV FRONTY</span>
+      <h1 id="observerTitle">Načítám skladbu…</h1>
+      <p id="observerArtist"></p>
+      <p>Hudba zůstává na barovém počítači. Otevření tohoto náhledu nemění frontu ani nespouští další přehrávač.</p>
+      <a href="/admin">Ovládat jukebox</a>
+      <details>
+        <summary>Chci pouštět hudbu přímo z telefonu</summary>
+        <p>Nejdřív zavři TV přehrávač na barovém PC. Aktivní přehrávač používej pouze na jednom zařízení.</p>
+        <button id="enablePlayback" type="button">Spustit přehrávání na tomto telefonu</button>
+      </details>
+    </div>
+  </section>
   <div class="player-shell" id="playerShell">
     <div id="playerA"></div>
     <div id="playerB"></div>
