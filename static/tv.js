@@ -22,6 +22,8 @@ let transitionAudio = null;
 let transitioning = false;
 let transitionBag = [];
 let lastTransitionId = null;
+let transitionHistory = [];
+let songsSinceScratch = 99;
 let autoDjEnabled = true;
 let autoDjBusy = false;
 let nextAutoDjAttempt = 0;
@@ -46,6 +48,9 @@ const MIX_DURATION_MS = 5200;
 const MIX_STEPS = 52;
 const INCOMING_START_TIMEOUT_MS = 5000;
 const MAX_FAILED_CANDIDATES = 5;
+const SMOOTH_MIX_DURATION_MS = 6800;
+const QUICK_MIX_DURATION_MS = 3200;
+const MIN_SONGS_BETWEEN_SCRATCHES = 3;
 
 const TRANSITION_VARIANTS = Object.freeze([
   Object.freeze({ id: "backspin", label: "DJ BACKSPIN", duration: 0.92 }),
@@ -146,6 +151,44 @@ function synthesizeTransitionSamples(sampleRate, variant = TRANSITION_VARIANTS[0
     samples[frame] = signal;
   }
   return samples;
+}
+
+function songText(song) {
+  return `${song?.title || ""} ${song?.artist || ""}`.toLowerCase();
+}
+
+function transitionPlan(fromSong, toSong) {
+  const text = `${songText(fromSong)} ${songText(toSong)}`;
+  const hiphopOrFunk = /(hip.?hop|rap|funk|psh|indy|wich|chaozz|j\.a\.r|monkey business|roman hol)/i.test(text);
+  const sameArtist = Boolean(fromSong?.artist && toSong?.artist
+    && fromSong.artist.toLowerCase() === toSong.artist.toLowerCase());
+
+  // Scratches are an accent, never the default. Keep at least three clean mixes between them.
+  const scratchAllowed = transitionMode === "scratch"
+    && hiphopOrFunk
+    && !sameArtist
+    && songsSinceScratch >= MIN_SONGS_BETWEEN_SCRATCHES;
+
+  let type = "smooth";
+  let durationMs = SMOOTH_MIX_DURATION_MS;
+  if (sameArtist) {
+    type = "quick";
+    durationMs = QUICK_MIX_DURATION_MS;
+  } else if (scratchAllowed && Math.random() < 0.28) {
+    type = "scratch";
+    durationMs = 4300;
+  }
+
+  // Avoid repeating the same transition character back-to-back.
+  if (transitionHistory.at(-1) === type && type !== "smooth") {
+    type = "smooth";
+    durationMs = SMOOTH_MIX_DURATION_MS;
+  }
+  transitionHistory.push(type);
+  transitionHistory = transitionHistory.slice(-8);
+  if (type === "scratch") songsSinceScratch = 0;
+  else songsSinceScratch += 1;
+  return { type, durationMs };
 }
 
 async function playScratchTransition() {
@@ -392,8 +435,10 @@ async function finishCurrentSong(earlyMix = false) {
       showSong(null);
     } else {
       reserved = true;
-      const mixPromise = crossfadeDecks(outgoing, incoming, earlyMix ? MIX_DURATION_MS : 2600);
-      const fxPromise = transitionMode === "scratch" ? playScratchTransition() : Promise.resolve();
+      const plan = transitionPlan(currentSong, next);
+      const durationMs = earlyMix ? plan.durationMs : Math.min(plan.durationMs, QUICK_MIX_DURATION_MS);
+      const mixPromise = crossfadeDecks(outgoing, incoming, durationMs);
+      const fxPromise = plan.type === "scratch" ? playScratchTransition() : Promise.resolve();
       await Promise.all([mixPromise, fxPromise]);
 
       players[outgoing]?.pauseVideo();
