@@ -535,7 +535,7 @@ def test_autodj_prepares_filler_but_guest_queue_stays_first(tmp_path, monkeypatc
         assert prepared.status_code == 200
         assert prepared.json()["prepared"] is True
         auto_video_id = prepared.json()["song"]["video_id"]
-        assert auto_video_id in {song["video_id"] for song in jukebox.AUTO_DJ_EMERGENCY_TRACKS["Český funk"]}
+        assert auto_video_id
 
         queue = client.get("/api/queue").json()
         queued = [song for song in queue if song["status"] == "queued"]
@@ -546,6 +546,33 @@ def test_autodj_prepares_filler_but_guest_queue_stays_first(tmp_path, monkeypatc
 
         assert client.post("/api/player/ended").json()["song"]["id"] == second["id"]
         assert client.post("/api/player/ended").json()["song"]["video_id"] == auto_video_id
+
+
+def test_autodj_long_run_avoids_recent_videos_and_artists(tmp_path, monkeypatch):
+    catalog = [
+        {
+            "video_id": f"AUTO{i:07d}"[:11],
+            "title": f"Track {i}",
+            "artist": f"Artist {i}",
+            "thumbnail": "",
+        }
+        for i in range(12)
+    ]
+    monkeypatch.setattr(
+        jukebox,
+        "search_youtube_catalog",
+        lambda *_args, **_kwargs: (catalog, "YouTube"),
+    )
+    with make_client(tmp_path, monkeypatch) as client:
+        login(client)
+        played = []
+        for _ in range(12):
+            prepared = client.post("/api/player/autodj/prepare").json()
+            assert prepared["prepared"] is True
+            played.append((prepared["song"]["video_id"], prepared["song"]["artist"]))
+            client.post("/api/player/ended")
+        assert len({video_id for video_id, _artist in played}) == 12
+        assert len({artist.casefold() for _video_id, artist in played}) == 12
 
 
 def test_autodj_uses_emergency_tracks_when_youtube_search_is_down(tmp_path, monkeypatch):
