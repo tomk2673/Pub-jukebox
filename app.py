@@ -43,6 +43,8 @@ VENUE_KEY = re.sub(r"[^a-z0-9-]", "-", os.getenv("VENUE_KEY", "ztraceny-bar").lo
 DEFAULT_MENU_TEXT = os.getenv("DEFAULT_MENU_TEXT", "").strip()
 MAX_QUEUE_LENGTH = max(5, int(os.getenv("MAX_QUEUE_LENGTH", "50")))
 MAX_ACTIVE_PER_GUEST = max(1, int(os.getenv("MAX_ACTIVE_PER_GUEST", "3")))
+AUTO_DJ_VIDEO_HISTORY = 24
+AUTO_DJ_ARTIST_HISTORY = 8
 NIGHT_VOLUME = min(100, max(0, int(os.getenv("NIGHT_VOLUME", "55"))))
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "").lower() in {"1", "true", "yes"}
 VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
@@ -928,13 +930,23 @@ def autodj_status() -> dict:
             "SELECT COUNT(*) AS n FROM queue WHERE requester_id='autodj' AND status='done'"
         ).fetchone()["n"]
         recent = conn.execute(
-            "SELECT video_id FROM queue WHERE status IN ('playing','queued','done') ORDER BY id DESC LIMIT 6"
+            """
+            SELECT video_id, artist FROM queue
+            WHERE requester_id='autodj' AND status IN ('playing','queued','done')
+            ORDER BY id DESC LIMIT ?
+            """,
+            (AUTO_DJ_VIDEO_HISTORY,),
         ).fetchall()
     return {
         "prepared": bool(prepared),
         "song": dict(prepared) if prepared else None,
         "completed": int(completed),
         "recent_video_ids": [row["video_id"] for row in recent],
+        "recent_artists": [
+            row["artist"].strip().casefold()
+            for row in recent[:AUTO_DJ_ARTIST_HISTORY]
+            if row["artist"].strip()
+        ],
     }
 
 
@@ -973,13 +985,33 @@ def insert_autodj_candidate(song: dict, playlist_label: str) -> dict:
         duplicate = conn.execute(
             """
             SELECT id FROM queue
-            WHERE video_id=? AND id IN (
-                SELECT id FROM queue WHERE status IN ('playing','queued','done') ORDER BY id DESC LIMIT 6
-            ) LIMIT 1
+            WHERE requester_id='autodj'
+              AND status IN ('playing','queued','done')
+              AND video_id=?
+              AND id IN (
+                  SELECT id FROM queue
+                  WHERE requester_id='autodj' AND status IN ('playing','queued','done')
+                  ORDER BY id DESC LIMIT ?
+              )
+            LIMIT 1
             """,
-            (payload["video_id"],),
+            (payload["video_id"], AUTO_DJ_VIDEO_HISTORY),
         ).fetchone()
-        if duplicate:
+        recent_artist = None
+        if payload["artist"].strip():
+            recent_artist = conn.execute(
+                """
+                SELECT id FROM (
+                    SELECT id, artist FROM queue
+                    WHERE requester_id='autodj' AND status IN ('playing','queued','done')
+                    ORDER BY id DESC LIMIT ?
+                )
+                WHERE lower(trim(artist))=lower(trim(?))
+                LIMIT 1
+                """,
+                (AUTO_DJ_ARTIST_HISTORY, payload["artist"]),
+            ).fetchone()
+        if duplicate or recent_artist:
             conn.commit()
             return {"prepared": False, "reason": "recent"}
         cursor = conn.execute(
@@ -1477,16 +1509,31 @@ def prepare_autodj(request: Request):
         for song in AUTO_DJ_EMERGENCY_TRACKS.get(playlist_label, [])
     ]
     recent = set(status.get("recent_video_ids") or [])
-    candidates = [song for song in emergency if song.get("video_id") not in recent]
-    provider = "stálý barový zásobník"
+    recent_artists = {str(artist).strip().casefold() for artist in status.get("recent_artists") or []}
+    try:
+        results, provider = search_youtube_catalog(query, 10, fallback_first=True)
+    except HTTPException:
+        results, provider = [], "nouzový zásobník"
+    fresh_results = [
+        song for song in results
+        if song.get("video_id") not in recent
+        and (not str(song.get("artist", "")).strip()
+             or str(song.get("artist", "")).strip().casefold() not in recent_artists)
+    ]
+    candidates = fresh_results
     if not candidates:
-        try:
-            results, provider = search_youtube_catalog(query, 10, fallback_first=True)
-        except HTTPException:
-            results, provider = [], "nouzový zásobník"
-        candidates = [*results, *emergency]
+        provider = "nouzový zásobník"
+        candidates = [
+            song for song in emergency
+            if song.get("video_id") not in recent
+            and (not str(song.get("artist", "")).strip()
+                 or str(song.get("artist", "")).strip().casefold() not in recent_artists)
+        ]
     for song in candidates:
         if song.get("video_id") in recent:
+            continue
+        artist = str(song.get("artist", "")).strip().casefold()
+        if artist and artist in recent_artists:
             continue
         prepared = insert_autodj_candidate(song, playlist_label)
         if prepared.get("prepared"):
