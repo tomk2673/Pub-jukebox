@@ -9,6 +9,7 @@ import json
 import os
 import re
 import secrets
+import random
 import sqlite3
 import threading
 import time
@@ -77,6 +78,15 @@ AUTO_DJ_PLAYLISTS = {
             "Chaozz český hip hop official",
         ],
     },
+    "soul_blues": {
+        "label": "Retro Soul & Blues",
+        "queries": [
+            "1960s soul blues cover famous songs",
+            "vintage Motown soul cover hip hop",
+            "retro soul funk reimagined cover",
+            "1950s 1960s blues soul AI cover",
+        ],
+    },
     "karaoke": {
         "label": "Karaoke s originálem",
         "queries": [
@@ -86,8 +96,9 @@ AUTO_DJ_PLAYLISTS = {
         ],
     },
 }
-DEFAULT_AUTO_DJ_PLAYLISTS = ["cz_funk", "cz_oldies", "cz_hiphop"]
+DEFAULT_AUTO_DJ_PLAYLISTS = ["soul_blues", "cz_funk", "cz_oldies", "cz_hiphop"]
 DISCOVERY_QUERIES = {
+    "soul_blues": "1960s soul blues vintage Motown cover",
     "cz_funk": "český funk J.A.R. Monkey Business Roman Holý",
     "cz_oldies": "české oldies Karel Gott Hana Zagorová Marie Rottrová Olympic",
     "cz_hiphop": "starý český hip hop PSH Indy Wich Chaozz",
@@ -114,18 +125,9 @@ NON_MUSIC_TERMS = (
     "review",
 )
 AUTO_DJ_EMERGENCY_TRACKS = {
-    "Český funk": [
-        {"video_id": "6EzMdAskU9M", "title": "J.A.R. – Bulhári", "artist": "J.A.R."},
-        {"video_id": "5Oq04M4bJ5Q", "title": "J.A.R. – Jsem pohodlný", "artist": "J.A.R."},
-        {"video_id": "8e39rbKHC5o", "title": "Monkey Business – Piece of My Life", "artist": "Monkey Business"},
-    ],
-    "České oldies": [
-        {"video_id": "Jd2p0HmgPBk", "title": "Karel Gott – Trezor", "artist": "Karel Gott"},
-        {"video_id": "Al3Ai_8otI0", "title": "Hana Zagorová – Můj čas", "artist": "Hana Zagorová"},
-    ],
-    "Český hip-hop 90/00": [
-        {"video_id": "72bGVWG55zY", "title": "PSH – Praha", "artist": "PSH"},
-        {"video_id": "4c37mtreI5E", "title": "PSH – Já to říkal", "artist": "PSH"},
+    # Only a last-resort seed. Never put the old repetitive emergency trio back here.
+    "Retro Soul & Blues": [
+        {"video_id": "EEJTgR2cl1Y", "title": "Moja Reč – Nočný let (1960's Soul Blues AI cover)", "artist": "Moja Reč"},
     ],
 }
 
@@ -343,8 +345,8 @@ class VenueSettingsUpdate(BaseModel):
     transition_mode: Literal["none", "scratch"] = "scratch"
     transition_volume: int = Field(default=55, ge=0, le=100)
     autodj_enabled: bool = True
-    autodj_playlists: list[Literal["cz_funk", "cz_oldies", "cz_hiphop", "karaoke"]] = Field(
-        default_factory=lambda: list(DEFAULT_AUTO_DJ_PLAYLISTS), max_length=4
+    autodj_playlists: list[Literal["soul_blues", "cz_funk", "cz_oldies", "cz_hiphop", "karaoke"]] = Field(
+        default_factory=lambda: list(DEFAULT_AUTO_DJ_PLAYLISTS), max_length=5
     )
     autodj_custom_queries: str = Field(default="", max_length=1000)
     audio_mode: Literal["standard", "bass_guard"] = "standard"
@@ -928,7 +930,11 @@ def autodj_status() -> dict:
             "SELECT COUNT(*) AS n FROM queue WHERE requester_id='autodj' AND status='done'"
         ).fetchone()["n"]
         recent = conn.execute(
-            "SELECT video_id FROM queue WHERE status IN ('playing','queued','done') ORDER BY id DESC LIMIT 6"
+            """
+            SELECT DISTINCT video_id FROM queue
+            WHERE requester_id='autodj' AND status IN ('playing','queued','done')
+            ORDER BY id DESC
+            """
         ).fetchall()
     return {
         "prepared": bool(prepared),
@@ -973,9 +979,9 @@ def insert_autodj_candidate(song: dict, playlist_label: str) -> dict:
         duplicate = conn.execute(
             """
             SELECT id FROM queue
-            WHERE video_id=? AND id IN (
-                SELECT id FROM queue WHERE status IN ('playing','queued','done') ORDER BY id DESC LIMIT 6
-            ) LIMIT 1
+            WHERE video_id=? AND requester_id='autodj'
+              AND status IN ('playing','queued','done')
+            LIMIT 1
             """,
             (payload["video_id"],),
         ).fetchone()
@@ -1477,14 +1483,16 @@ def prepare_autodj(request: Request):
         for song in AUTO_DJ_EMERGENCY_TRACKS.get(playlist_label, [])
     ]
     recent = set(status.get("recent_video_ids") or [])
-    candidates = [song for song in emergency if song.get("video_id") not in recent]
-    provider = "stálý barový zásobník"
+    # Search the broad catalog first. Emergency seeds are truly last resort.
+    try:
+        results, provider = search_youtube_catalog(query, 30, fallback_first=False)
+    except HTTPException:
+        results, provider = [], "nouzový zásobník"
+    candidates = [song for song in results if song.get("video_id") not in recent]
+    random.shuffle(candidates)
     if not candidates:
-        try:
-            results, provider = search_youtube_catalog(query, 10, fallback_first=True)
-        except HTTPException:
-            results, provider = [], "nouzový zásobník"
-        candidates = [*results, *emergency]
+        candidates = [song for song in emergency if song.get("video_id") not in recent]
+        random.shuffle(candidates)
     for song in candidates:
         if song.get("video_id") in recent:
             continue
