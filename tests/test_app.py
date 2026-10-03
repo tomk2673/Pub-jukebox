@@ -407,7 +407,7 @@ def test_guest_mobile_layout_blocks_horizontal_overscroll(tmp_path, monkeypatch)
         assert "overscroll-behavior-x: none" in style.text
         assert "touch-action: pan-y pinch-zoom" in style.text
         assert ".guest-app .results .song-card > .btn" in style.text
-        assert 'pub-jukebox-v11' in worker.text
+        assert 'pub-jukebox-v12' in worker.text
 
 
 def test_all_surfaces_install_fullscreen_on_phone_and_computer(tmp_path, monkeypatch):
@@ -443,7 +443,7 @@ def test_all_surfaces_install_fullscreen_on_phone_and_computer(tmp_path, monkeyp
         assert worker.status_code == 200
         assert worker.headers["service-worker-allowed"] == "/"
         assert "no-cache" in worker.headers["cache-control"]
-        assert 'pub-jukebox-v11' in worker.text
+        assert 'pub-jukebox-v12' in worker.text
         assert "/static/admin.webmanifest" in worker.text
         assert "/static/tv.webmanifest" in worker.text
         assert 'register("/sw.js", { scope: "/" })' in installer.text
@@ -524,6 +524,10 @@ def test_admin_manages_venue_tv_and_audio_profile(tmp_path, monkeypatch):
 
 
 def test_autodj_prepares_filler_but_guest_queue_stays_first(tmp_path, monkeypatch):
+    monkeypatch.setattr(jukebox, "search_youtube_catalog", lambda *args, **kwargs: (
+        [{"video_id": VIDEO_B, "title": "Catalog song", "artist": "Test artist", "thumbnail": ""}],
+        "test catalog",
+    ))
     with make_client(tmp_path, monkeypatch) as client:
         join(client)
         first = add(client, VIDEO_A, "Guest first").json()
@@ -535,7 +539,8 @@ def test_autodj_prepares_filler_but_guest_queue_stays_first(tmp_path, monkeypatc
         assert prepared.status_code == 200
         assert prepared.json()["prepared"] is True
         auto_video_id = prepared.json()["song"]["video_id"]
-        assert auto_video_id in {song["video_id"] for song in jukebox.AUTO_DJ_EMERGENCY_TRACKS["Český funk"]}
+        assert auto_video_id == VIDEO_B
+        assert prepared.json()["provider"] == "test catalog"
 
         queue = client.get("/api/queue").json()
         queued = [song for song in queue if song["status"] == "queued"]
@@ -556,10 +561,12 @@ def test_autodj_uses_emergency_tracks_when_youtube_search_is_down(tmp_path, monk
     )
     with make_client(tmp_path, monkeypatch) as client:
         login(client)
+        with jukebox.connection() as conn:
+            conn.execute("UPDATE venue_settings SET autodj_playlists=?", ('["soul_blues"]',))
         prepared = client.post("/api/player/autodj/prepare")
         assert prepared.status_code == 200
         assert prepared.json()["prepared"] is True
-        assert prepared.json()["provider"] == "stálý barový zásobník"
+        assert prepared.json()["provider"] == "nouzový zásobník"
         assert prepared.json()["song"]["status"] == "queued"
 
 
@@ -614,7 +621,7 @@ def test_bass_guard_has_safe_offline_profile_and_failure_cleanup():
     assert "bass_guard_strength: 100" in source
     assert "readProfile().catch(() => SAFE_PROFILE)" in source
     assert "catch (error) {\n    await stop();\n    throw error;" in source
-    assert '"version": "0.3.0"' in manifest
+    assert '"version": "0.3.1"' in manifest
 
 
 def test_guest_access_can_be_locked_to_bar_network(tmp_path, monkeypatch):

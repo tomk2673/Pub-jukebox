@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-const state = { config: null, queue: [], busy: false };
+const state = { config: null, queue: [], busy: false, skipping: null, queueVersion: 0 };
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -61,6 +61,10 @@ function renderQueue() {
   root.replaceChildren();
   const playing = state.queue.find((song) => song.status === "playing");
   const queued = state.queue.filter((song) => song.status === "queued");
+  const canSkip = Boolean(playing?.requested_by_me) && !isAutoDj(playing || {});
+  $("ownSongActions").classList.toggle("hidden", !canSkip);
+  $("skipOwnSong").disabled = state.skipping !== null;
+  $("skipOwnSong").textContent = state.skipping !== null ? "Přeskakuji…" : "Přeskočit moji skladbu";
   $("queueCount").textContent = String(queued.filter((song) => !isAutoDj(song)).length);
   if (playing) {
     $("nowTitle").textContent = playing.title;
@@ -121,13 +125,40 @@ function isAutoDj(song) {
 }
 
 async function loadQueue(silent = false) {
+  const version = ++state.queueVersion;
   try {
-    state.queue = await api("/api/queue");
+    const queue = await api("/api/queue");
+    if (version !== state.queueVersion) return;
+    state.queue = queue;
     renderQueue();
     $("connection").textContent = "online";
   } catch (error) {
+    if (version !== state.queueVersion) return;
     $("connection").textContent = "bez spojení";
     if (!silent) setStatus(error.message, "error");
+  }
+}
+
+async function skipOwnSong() {
+  const song = state.queue.find((item) => item.status === "playing");
+  if (state.skipping !== null || !song?.requested_by_me || isAutoDj(song)) return;
+  if (!window.confirm(`Přeskočit „${song.title}“? Pustí se další skladba z fronty.`)) return;
+  state.skipping = song.id;
+  ++state.queueVersion;
+  renderQueue();
+  setStatus("Přeskakuji tvoji skladbu…", "", "nowStatus");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const result = await api(`/api/queue/${song.id}/skip`, { method: "POST", signal: controller.signal });
+    setStatus(result.idempotent ? "Tvoje skladba už skončila." : "Skladba přeskočena. Pokračuje další z fronty.", "success", "nowStatus");
+  } catch (error) {
+    setStatus(error.name === "AbortError" ? "Odpověď nepřišla. Obnov frontu; případné opakování nepřeskočí další skladbu." : error.message, "error", "nowStatus");
+  } finally {
+    clearTimeout(timer);
+    state.skipping = null;
+    renderQueue();
+    await loadQueue(true);
   }
 }
 
@@ -214,6 +245,7 @@ async function cancelSong(id, title, button) {
 
 async function boot() {
   $("searchForm").addEventListener("submit", search);
+  $("skipOwnSong").addEventListener("click", skipOwnSong);
   $("refreshButton").addEventListener("click", () => loadQueue());
   document.querySelectorAll("[data-discovery]").forEach((button) => {
     button.addEventListener("click", () => loadDiscovery(button.dataset.discovery));

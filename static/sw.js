@@ -1,4 +1,4 @@
-const CACHE = "pub-jukebox-v11";
+const CACHE = "pub-jukebox-v12";
 const ASSETS = [
   "/static/common.css",
   "/static/guest.js",

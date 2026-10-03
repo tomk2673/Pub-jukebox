@@ -1,5 +1,17 @@
 # PUB Jukebox 1.9.2
 
+## Přeskočení vlastní skladby — 3. října 2026
+
+Host u své právě hrané skladby vidí **Přeskočit moji skladbu**. Po potvrzení
+naváže další skladba podle běžného pořadí fronty. Host je rozpoznaný podle
+podepsané cookie ze stejného prohlížeče, ve kterém skladbu přidal; další přihlášení
+není potřeba. Čekající vlastní skladby lze dál zrušit ve frontě.
+
+Oprávnění kontroluje server i databázová operace. Přeskočení používá konkrétní ID
+skladby a je atomické: opakovaný nebo opožděný požadavek nepřeskočí dalšího hosta.
+Před nasazením aplikace je nutná migrace `add_guest_skip_own_song` pro Supabase;
+lokální SQLite používá stejná pravidla.
+
 ## Ovládání Bass Guardu z mobilu — 15. září 2026
 
 - Samostatné tlačítko „Použít zvuk na PC“ ukládá pouze zvukový profil.
@@ -128,6 +140,9 @@ Viz `.env.example`. Nejdůležitější proměnné:
 python -m pip install -r requirements-dev.txt
 python -m pytest -q
 node tests/test_bass_guard_dsp.mjs
+node tests/test_guest_skip_ui.mjs
+npm ci --prefix tests/sql
+npm test --prefix tests/sql
 ```
 
 ## Základ pro prodej dalším provozovnám
@@ -139,4 +154,3 @@ Profil provozovny je oddělený od zdrojového kódu pomocí `VENUE_KEY`. V data
 Night Bass Guard je praktický adaptivní procesor pro provoz baru, ne certifikovaný měřicí přístroj EBU R128. Cílové LUFS proto představuje průběžný K-vážený odhad, který je vhodné doladit podle konkrétní aparatury a prostoru. Bez zapnutého Windows rozšíření zůstává zvuk YouTube beze změny a administrace pravdivě zobrazuje procesor jako nepřipojený.
 
 Veřejné přehrávání hudby a komerční použití musí provozovatel řešit v souladu s podmínkami YouTube a příslušnými hudebními licencemi. Skladby se přidávají rovnou do fronty a jejich pořadí mění hlasování hostů; obsluha nic nepotvrzuje.
-
