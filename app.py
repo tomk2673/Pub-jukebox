@@ -26,6 +26,8 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+import advertising
+
 
 BASE = Path(__file__).resolve().parent
 STATIC = BASE / "static"
@@ -255,6 +257,7 @@ def init_db() -> None:
             conn.execute("ALTER TABLE audio_processors ADD COLUMN applied_profile TEXT")
         conn.execute("UPDATE queue SET created_at=id WHERE created_at=0")
         conn.commit()
+        advertising.init_schema(conn)
 
 
 def supabase_rpc(function_name: str, action: str, payload: dict | None = None):
@@ -1823,3 +1826,109 @@ def discover_songs(
     seen = {song.get("video_id") for song in found}
     items = [*found, *(song for song in fallback if song["video_id"] not in seen)][:12]
     return {"items": items, "category": category, "source": provider}
+
+
+# Advertising is deliberately independent of queue/player RPCs and their polling.
+def advertising_action(action: str, payload: dict | None = None):
+    body = {**(payload or {}), "venue_key": VENUE_KEY, "stamp": now()}
+    if USE_SUPABASE:
+        return supabase_rpc("jukebox_ads_rpc", action, body)
+    return advertising.local_action(connection, VENUE_KEY, action, body)
+
+
+def require_ad_json(request: Request):
+    if request.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/json":
+        raise HTTPException(415, "Použij JSON požadavek.")
+    origin = request.headers.get("origin")
+    if origin and urlparse(origin).netloc != request.headers.get("host"):
+        raise HTTPException(403, "Požadavek musí přijít z jukeboxu.")
+
+
+@app.get("/menu", include_in_schema=False)
+def menu_page():
+    return FileResponse(STATIC / "menu.html")
+
+
+@app.get("/admin/ads", include_in_schema=False)
+def advertising_page(request: Request):
+    if not is_admin(request):
+        return RedirectResponse("/admin", status_code=303)
+    return FileResponse(STATIC / "ads-admin.html", headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/menu")
+def guest_menu(request: Request, preview: str = ""):
+    require_guest(request)
+    profile = venue_settings()
+    result = {"business_name": profile["business_name"], "menu_text": profile.get("menu_text", ""), "sponsor": None}
+    if preview:
+        require_admin(request)
+        campaigns = advertising_action("list")
+        campaign = next((row for row in campaigns if row["id"] == preview), None)
+        if not campaign:
+            raise HTTPException(404, "Kampaň nebyla nalezena.")
+    elif not result["menu_text"].strip():
+        # Sell a placement next to useful, independently owned venue content.
+        return result
+    else:
+        try:
+            campaign = advertising_action("current")
+        except HTTPException:
+            # A missing migration or unavailable ad store must not break the menu.
+            return result
+    if campaign:
+        result["sponsor"] = {key: campaign[key] for key in ("id", "sponsor", "headline", "body", "cta", "target_url")}
+        result["sponsor"]["preview"] = is_admin(request)
+        if not is_admin(request):
+            nonce = secrets.token_hex(16)
+            subject = f"{campaign['id']}:{nonce}:{now() + 3600}"
+            result["sponsor"]["event_token"] = make_token("ad-event", subject)
+    return result
+
+
+@app.get("/api/admin/ads")
+def advertising_admin(request: Request):
+    require_admin(request)
+    return {
+        "campaigns": advertising_action("list"),
+        "menu_ready": bool(venue_settings().get("menu_text", "").strip()),
+        "programmatic_enabled": False,
+        "rewarded_enabled": False,
+        "revenue_recipient": "PUB JUKEBOX",
+        "venue_revenue_share_percent": 0,
+    }
+
+
+@app.post("/api/admin/ads", status_code=201)
+def create_advertising(campaign: advertising.CampaignInput, request: Request):
+    require_admin(request)
+    require_ad_json(request)
+    if campaign.ends_at <= now():
+        raise HTTPException(422, "Kampaň musí končit v budoucnu.")
+    return advertising_action("create", {"id": secrets.token_hex(16), "campaign": campaign.model_dump()})
+
+
+@app.post("/api/admin/ads/{campaign_id}/{action}")
+def change_advertising(campaign_id: str, action: Literal["activate", "pause"], request: Request):
+    require_admin(request)
+    require_ad_json(request)
+    if action == "activate" and not venue_settings().get("menu_text", "").strip():
+        raise HTTPException(409, "Nejdřív v nastavení vyplň skutečný nápojový lístek.")
+    return advertising_action(action, {"id": campaign_id})
+
+
+@app.post("/api/ads/event")
+def advertising_event(event: advertising.AdEvent, request: Request):
+    require_guest(request)
+    require_ad_json(request)
+    if is_admin(request):
+        return {"ok": True, "counted": False}
+    subject = read_token(event.token, "ad-event", 3600)
+    if not subject:
+        raise HTTPException(422, "Platnost měření vypršela. Obnov stránku.")
+    parts = subject.split(":")
+    if len(parts) != 3 or not all(re.fullmatch(r"[a-f0-9]{32}", value) for value in parts[:2]) or not parts[2].isdigit():
+        raise HTTPException(422, "Neplatný měřicí token.")
+    return advertising_action("event", {
+        "id": parts[0], "nonce": parts[1], "expires_at": int(parts[2]), "kind": event.kind,
+    })

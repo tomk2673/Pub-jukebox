@@ -1,5 +1,15 @@
 # PUB Jukebox 1.9.2
 
+## Reklamní modul — 4. října 2026
+
+Samostatný nápojový lístek `/menu` a správa sponzorských kampaní `/admin/ads`.
+Návrhy jsou vypnuté, lze je zkontrolovat, spustit na období a jedním tlačítkem
+vypnout. Statistiky měří zobrazení a prokliky, ne příjem. Reklama nezasahuje
+do hudby. Google reklamy a odměny zatím nejsou aktivní.
+
+Před nasazením na Supabase je nutná migrace `20261003235000_add_sponsor_campaigns.sql`.
+[Model monetizace, provoz, omezení a podmínky spuštění](docs/advertising.md).
+
 ## Přeskočení vlastní skladby — 3. října 2026
 
 Host u své právě hrané skladby vidí **Přeskočit moji skladbu**. Po potvrzení
