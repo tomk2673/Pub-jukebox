@@ -1382,6 +1382,46 @@ def play(song_id: int, request: Request):
     return {"ok": True}
 
 
+@app.post("/api/queue/{song_id}/skip")
+def skip_own_song(song_id: int, request: Request):
+    requester = require_guest(request)
+    if USE_SUPABASE:
+        return supabase_rpc(
+            "jukebox_guest_skip_rpc", "skip",
+            {"song_id": song_id, "requester_id": requester},
+        )
+    with connection() as conn:
+        # Ownership, removal and advancement share one lock. A stale tap must
+        # never advance the next guest's song, even after a lost response.
+        conn.execute("BEGIN IMMEDIATE")
+        song = conn.execute(
+            "SELECT status, requester_id FROM queue WHERE id=?", (song_id,)
+        ).fetchone()
+        if not song or song["requester_id"] != requester or requester == "autodj":
+            raise HTTPException(404, "Přeskočit můžeš jen skladbu, kterou jsi přidal/a.")
+        if song["status"] in {"done", "removed"}:
+            return {"ok": True, "idempotent": True}
+        if song["status"] != "playing":
+            raise HTTPException(409, "Tahle skladba ještě nehraje. Ve frontě ji můžeš zrušit.")
+        timestamp = now()
+        conn.execute(
+            "UPDATE queue SET status='removed', finished_at=? WHERE id=?",
+            (timestamp, song_id),
+        )
+        next_song = conn.execute(
+            "SELECT id FROM queue WHERE status='queued' "
+            "ORDER BY priority DESC, votes DESC, id ASC LIMIT 1"
+        ).fetchone()
+        if next_song:
+            conn.execute(
+                "UPDATE queue SET status='playing', started_at=?, finished_at=NULL WHERE id=?",
+                (timestamp, next_song["id"]),
+            )
+        bump_player(conn, "load")
+        conn.commit()
+    return {"ok": True, "idempotent": False}
+
+
 @app.delete("/api/queue/{song_id}")
 def remove_song(song_id: int, request: Request):
     admin = is_admin(request)

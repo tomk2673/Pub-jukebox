@@ -151,6 +151,10 @@ h2 { margin-bottom: 16px; font-size: clamp(23px, 4vw, 34px); letter-spacing: -0.
 }
 
 .now-content { position: relative; z-index: 1; display: flex; min-height: 200px; flex-direction: column; justify-content: flex-end; }
+.now-actions { margin-top: 16px; }
+.now-actions .btn { min-height: 48px; }
+.now-actions p { margin: 8px 0 0; }
+#nowStatus:empty { display: none; }
 .now-title { max-width: 700px; margin: 8px 0; font-size: clamp(27px, 5vw, 46px); line-height: 1.03; letter-spacing: -0.04em; }
 .now-artist { color: #d8dde4; font-size: 17px; }
 
