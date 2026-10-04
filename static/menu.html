@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#090b0f">
+  <title>Nápojový lístek · PUB JUKEBOX</title>
+  <link rel="stylesheet" href="/static/common.css">
+  <link rel="stylesheet" href="/static/advertising.css">
+</head>
+<body class="guest-app">
+  <main class="shell menu-shell">
+    <header class="topbar">
+      <div class="brand"><div class="brand-mark">P</div><div><div class="eyebrow">U NÁS V BARU</div><div class="brand-name" id="menuVenue">PUB JUKEBOX</div></div></div>
+      <a class="btn secondary compact" href="/guest">Zpět na hudbu</a>
+    </header>
+    <div class="menu-heading"><span class="eyebrow">NÁPOJOVÝ LÍSTEK</span><h1>Co si dáš?</h1><p class="muted">Vyber si. Objednej u obsluhy. Užij si večer.</p></div>
+    <p class="status" id="menuStatus" role="status">Načítám nabídku…</p>
+    <div class="menu-layout">
+      <aside class="sponsor-card hidden" id="sponsorCard" aria-label="Reklama">
+        <div class="sponsor-topline"><span class="sponsor-label">REKLAMA</span><span class="small muted">Partner PUB JUKEBOX</span></div>
+        <p class="preview-label hidden" id="previewLabel">NÁHLED · do statistik se nepočítá</p>
+        <p class="sponsor-name" id="sponsorName"></p>
+        <h2 id="sponsorHeadline"></h2><p class="muted sponsor-body" id="sponsorBody"></p>
+        <a class="btn sponsor-link" id="sponsorLink" target="_blank" rel="sponsored noopener noreferrer"></a>
+        <p class="sponsor-destination small muted" id="sponsorHost"></p>
+      </aside>
+      <section id="drinkMenu" class="drink-menu" aria-label="Nabídka nápojů"></section>
+    </div>
+    <footer class="menu-footer">
+      <p class="small muted">Nabídku a ceny potvrzuje obsluha podniku.</p>
+      <details><summary>O reklamě a měření</summary><p class="small muted">Placená nabídka je označená slovem Reklama. Počítáme zobrazení karty a otevření jejího odkazu; nejde o počet lidí ani uskutečněných nákupů. Proti opakovanému započítání používáme náhodný identifikátor této stránky platný jednu hodinu. Neukládáme k němu jméno ani ID hosta. Nepoužíváme reklamní cookies ani reklamní skripty třetích stran. Kliknutím přejdeš na web partnera, který má vlastní pravidla soukromí.</p></details>
+    </footer>
+  </main>
+  <script src="/static/menu.js" defer></script>
+</body>
+</html>

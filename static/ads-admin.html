@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#090b0f"><title>Reklamy · PUB JUKEBOX</title>
+  <link rel="stylesheet" href="/static/common.css"><link rel="stylesheet" href="/static/advertising.css">
+</head>
+<body>
+  <main class="shell ads-shell">
+    <header class="topbar"><div class="brand"><div class="brand-mark">P</div><div><div class="eyebrow">PUB JUKEBOX</div><div class="brand-name">REKLAMY</div></div></div><a class="btn secondary compact" href="/admin">Zpět do administrace</a></header>
+    <div class="ads-intro"><span class="eyebrow">PARTNER NA NÁPOJOVÉM LÍSTKU</span><h1>Prostor, který vydělává.</h1><p class="muted">Jedna nabídka pro hosty, domluvená přímo s partnerem. Připrav kampaň, zkontroluj náhled a spusť ji na sjednané období.</p></div>
+    <p class="ads-notice hidden" id="menuWarning">Nejdřív vyplň nápojový lístek v <a href="/admin">nastavení podniku</a>. Bez něj se reklama nespustí.</p>
+    <div class="status" id="adsStatus" role="status" aria-live="polite"></div>
+    <div class="ads-grid">
+      <section class="panel">
+        <div class="eyebrow">NOVÁ KAMPAŇ</div><h2>Připrav nabídku</h2>
+        <form class="ads-form" id="campaignForm">
+          <label>Jméno partnera<input name="sponsor" required minlength="2" maxlength="80" placeholder="Název firmy nebo značky"></label>
+          <label>Hlavní sdělení<input name="headline" required minlength="2" maxlength="100" placeholder="Jedna jasná nabídka pro hosty"></label>
+          <label>Podrobnosti nabídky<textarea name="body" required minlength="2" maxlength="320" rows="3" placeholder="Co host získá a za jakých podmínek"></textarea></label>
+          <label>Odkaz na nabídku<input name="target_url" type="url" required maxlength="500" placeholder="https://…"></label>
+          <label>Text tlačítka<input name="cta" required minlength="2" maxlength="32" value="Zobrazit nabídku"></label>
+          <div class="date-fields"><label>Začátek<input name="starts_at" type="datetime-local" required></label><label>Konec<input name="ends_at" type="datetime-local" required></label></div>
+          <button class="btn" id="saveCampaign" type="submit">Uložit jako návrh</button>
+          <p class="small muted">Uložením se reklama ještě nezobrazí. Spustíš ji až po kontrole náhledu.</p>
+        </form>
+      </section>
+      <section class="panel">
+        <div class="eyebrow">PŘEHLED</div><h2>Kampaně a výsledky</h2>
+        <div id="campaignList"><p class="muted">Načítám…</p></div>
+        <p class="small muted ads-help">Zobrazení se počítá při alespoň 50 % viditelné karty po dobu jedné sekundy nebo při kliknutí. Obnovená stránka se může započítat znovu. Náhledy obsluhy se nepočítají. Čísla jsou orientační, nejsou počtem lidí, fakturačním podkladem ani příjmem.</p>
+        <p class="small muted ads-help">Příjem z reklamy patří provozovateli PUB JUKEBOX. Podíl baru: 0 %. Platbu a cenu kampaně sjednáváš s partnerem zvlášť.</p>
+      </section>
+    </div>
+    <section class="panel ads-help" style="margin-top:22px">
+      <div class="eyebrow">DALŠÍ FÁZE</div><h2>Reklamní síť a odměny</h2>
+      <p class="muted">Google reklamy ani odměny za jejich zhlédnutí zatím nejsou zapnuté. Pro web je připravený směr Google Ad Manager; ke spuštění je potřeba reklamní účet, schválený web a reklamní jednotka, zdroj placených reklam a odpovídající správa souhlasu hostů.</p>
+      <p class="small muted">Odměnu „přednost skladby“ nejdřív ověřit vůči pravidlům YouTube a zabezpečit proti zneužití. Délku reklamy určuje síť. Časovač ani kliknutí na reklamu nesmí představovat potvrzení odměny.</p>
+      <p class="small"><a href="https://support.google.com/admanager/answer/9116812?hl=cs" target="_blank" rel="noopener noreferrer">Google: reklamy s odměnou pro web ↗</a></p>
+    </section>
+  </main>
+  <script src="/static/ads-admin.js" defer></script>
+</body>
+</html>
