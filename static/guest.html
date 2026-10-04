@@ -25,6 +25,22 @@
       <span class="small muted" id="connection">připojuji…</span>
     </header>
 
+    <section class="panel search-panel">
+      <div class="eyebrow">VYBER DALŠÍ TRACK</div>
+      <h2>Najdi skladbu na YouTube</h2>
+      <div class="search-kind" role="radiogroup" aria-label="Typ vystoupení">
+        <label><input type="radio" name="searchMode" value="music" checked><span>♫ Hudba</span></label>
+        <label><input type="radio" name="searchMode" value="karaoke"><span>🎤 Karaoke + originál</span></label>
+      </div>
+      <p class="karaoke-note">Karaoke hledá původní zpěv s textem přímo ve videu.</p>
+      <form class="search-row" id="searchForm">
+        <input id="searchInput" autocomplete="off" enterkeyhint="search" maxlength="100" placeholder="Interpret nebo název skladby" required>
+        <button class="btn" type="submit" id="searchButton">Hledat</button>
+      </form>
+      <div class="status" id="searchStatus" role="status"></div>
+      <div class="results" id="results"></div>
+    </section>
+
     <div class="pwa-install hidden" data-install-panel>
       <button class="btn secondary compact" type="button" data-install-app>Nainstalovat aplikaci bez lišty</button>
       <p class="small muted hidden" data-install-note></p>
@@ -63,22 +79,6 @@
       </div>
       <div class="status" id="discoverStatus" role="status"></div>
       <div class="results discover-results" id="discoverResults"></div>
-    </section>
-
-    <section class="panel search-panel">
-      <div class="eyebrow">VYBER DALŠÍ TRACK</div>
-      <h2>Najdi skladbu na YouTube</h2>
-      <div class="search-kind" role="radiogroup" aria-label="Typ vystoupení">
-        <label><input type="radio" name="searchMode" value="music" checked><span>♫ Hudba</span></label>
-        <label><input type="radio" name="searchMode" value="karaoke"><span>🎤 Karaoke + originál</span></label>
-      </div>
-      <p class="karaoke-note">Karaoke hledá původní zpěv s textem přímo ve videu.</p>
-      <form class="search-row" id="searchForm">
-        <input id="searchInput" autocomplete="off" enterkeyhint="search" maxlength="100" placeholder="Interpret nebo název skladby" required>
-        <button class="btn" type="submit" id="searchButton">Hledat</button>
-      </form>
-      <div class="status" id="searchStatus" role="status"></div>
-      <div class="results" id="results"></div>
     </section>
 
     <div class="section-head">
