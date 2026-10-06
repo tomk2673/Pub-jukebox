@@ -1,0 +1,7 @@
+{
+  "name": "jukebox-sql-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {"test": "node guest-skip.mjs && node autodj-takeover.mjs"},
+  "devDependencies": {"@electric-sql/pglite": "0.5.8"}
+}

@@ -25,6 +25,30 @@
       <span class="small muted" id="connection">připojuji…</span>
     </header>
 
+    <section class="panel search-panel">
+      <div class="eyebrow">VYBER DALŠÍ TRACK</div>
+      <h2>Najdi skladbu na YouTube</h2>
+      <div class="search-kind" role="radiogroup" aria-label="Typ vystoupení">
+        <label><input type="radio" name="searchMode" value="music" checked><span>♫ Hudba</span></label>
+        <label><input type="radio" name="searchMode" value="karaoke"><span>🎤 Karaoke + originál</span></label>
+      </div>
+      <p class="karaoke-note">Karaoke hledá původní zpěv s textem přímo ve videu.</p>
+      <form class="search-row" id="searchForm">
+        <input id="searchInput" autocomplete="off" enterkeyhint="search" maxlength="100" placeholder="Interpret nebo název skladby" required>
+        <button class="btn" type="submit" id="searchButton">Hledat</button>
+      </form>
+      <div class="status" id="searchStatus" role="status"></div>
+      <div class="results" id="results"></div>
+    </section>
+
+    <aside class="guest-tip" aria-label="Tip pro vlastní skladbu">
+      <svg class="guest-tip-icon" aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><path d="M3 5v14l8-7zm9 0v14l8-7zM21 5h2v14h-2z"/></svg>
+      <div>
+        <strong>Špatná volba? Přeskoč svou skladbu.</strong>
+        <p>Až hraje tvoje skladba, uvidíš u ní tlačítko „Přeskočit moji skladbu“. Pak pokračuje další z fronty.</p>
+      </div>
+    </aside>
+
     <div class="pwa-install hidden" data-install-panel>
       <button class="btn secondary compact" type="button" data-install-app>Nainstalovat aplikaci bez lišty</button>
       <p class="small muted hidden" data-install-note></p>
@@ -36,6 +60,11 @@
           <span class="eyebrow">PRÁVĚ HRAJE</span>
           <h1 class="now-title" id="nowTitle">Hudba čeká na první volbu</h1>
           <div class="now-artist" id="nowArtist">Najdi skladbu a pošli ji do fronty.</div>
+          <div class="now-actions hidden" id="ownSongActions">
+            <button class="btn secondary" type="button" id="skipOwnSong">Přeskočit moji skladbu</button>
+            <p class="small muted">Spletl/a ses? Pustí se další skladba z fronty.</p>
+          </div>
+          <div class="status" id="nowStatus" role="status" aria-live="polite"></div>
         </div>
       </article>
       <article class="panel stat-panel">
@@ -58,22 +87,6 @@
       </div>
       <div class="status" id="discoverStatus" role="status"></div>
       <div class="results discover-results" id="discoverResults"></div>
-    </section>
-
-    <section class="panel search-panel">
-      <div class="eyebrow">VYBER DALŠÍ TRACK</div>
-      <h2>Najdi skladbu na YouTube</h2>
-      <div class="search-kind" role="radiogroup" aria-label="Typ vystoupení">
-        <label><input type="radio" name="searchMode" value="music" checked><span>♫ Hudba</span></label>
-        <label><input type="radio" name="searchMode" value="karaoke"><span>🎤 Karaoke + originál</span></label>
-      </div>
-      <p class="karaoke-note">Karaoke hledá původní zpěv s textem přímo ve videu.</p>
-      <form class="search-row" id="searchForm">
-        <input id="searchInput" autocomplete="off" enterkeyhint="search" maxlength="100" placeholder="Interpret nebo název skladby" required>
-        <button class="btn" type="submit" id="searchButton">Hledat</button>
-      </form>
-      <div class="status" id="searchStatus" role="status"></div>
-      <div class="results" id="results"></div>
     </section>
 
     <div class="section-head">

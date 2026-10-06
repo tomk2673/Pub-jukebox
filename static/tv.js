@@ -670,8 +670,8 @@ async function applyState(state, force = false) {
   const guestTakesOverAutoDj = Boolean(
     song && previousSong
     && song.video_id !== previousSong.video_id
-    && String(previousSong.requested_by || "").startsWith("AutoDJ")
-    && !String(song.requested_by || "").startsWith("AutoDJ")
+    && (previousSong.is_autodj ?? String(previousSong.requested_by || "").startsWith("AutoDJ"))
+    && !(song.is_autodj ?? String(song.requested_by || "").startsWith("AutoDJ"))
   );
   if (guestTakesOverAutoDj && playbackEnabled && deckReady.every(Boolean)) {
     transitioning = true;

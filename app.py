@@ -999,8 +999,10 @@ def insert_autodj_candidate(song: dict, playlist_label: str) -> dict:
         duplicate = conn.execute(
             """
             SELECT id FROM queue
-            WHERE video_id=? AND requester_id='autodj'
-              AND status IN ('playing','queued','done')
+            WHERE video_id=? AND (
+              status IN ('playing','queued')
+              OR (requester_id='autodj' AND status='done')
+            )
             LIMIT 1
             """,
             (payload["video_id"],),
@@ -1341,9 +1343,13 @@ def add_to_queue(song: Song, request: Request):
                 "UPDATE queue SET status='done', finished_at=? WHERE id=?",
                 (timestamp, playing["id"]),
             )
+            next_guest = conn.execute(
+                "SELECT id FROM queue WHERE status='queued' AND requester_id <> 'autodj' "
+                "ORDER BY priority DESC, votes DESC, id ASC LIMIT 1"
+            ).fetchone()
             conn.execute(
                 "UPDATE queue SET status='playing', started_at=? WHERE id=?",
-                (timestamp, cursor.lastrowid),
+                (timestamp, next_guest["id"]),
             )
             bump_player(conn, "guest_takeover")
         elif playing is None:
@@ -1413,6 +1419,46 @@ def play(song_id: int, request: Request):
         bump_player(conn, "load")
         conn.commit()
     return {"ok": True}
+
+
+@app.post("/api/queue/{song_id}/skip")
+def skip_own_song(song_id: int, request: Request):
+    requester = require_guest(request)
+    if USE_SUPABASE:
+        return supabase_rpc(
+            "jukebox_guest_skip_rpc", "skip",
+            {"song_id": song_id, "requester_id": requester},
+        )
+    with connection() as conn:
+        # Ownership, removal and advancement share one lock. A stale tap must
+        # never advance the next guest's song, even after a lost response.
+        conn.execute("BEGIN IMMEDIATE")
+        song = conn.execute(
+            "SELECT status, requester_id FROM queue WHERE id=?", (song_id,)
+        ).fetchone()
+        if not song or song["requester_id"] != requester or requester == "autodj":
+            raise HTTPException(404, "Přeskočit můžeš jen skladbu, kterou jsi přidal/a.")
+        if song["status"] in {"done", "removed"}:
+            return {"ok": True, "idempotent": True}
+        if song["status"] != "playing":
+            raise HTTPException(409, "Tahle skladba ještě nehraje. Ve frontě ji můžeš zrušit.")
+        timestamp = now()
+        conn.execute(
+            "UPDATE queue SET status='removed', finished_at=? WHERE id=?",
+            (timestamp, song_id),
+        )
+        next_song = conn.execute(
+            "SELECT id FROM queue WHERE status='queued' "
+            "ORDER BY priority DESC, votes DESC, id ASC LIMIT 1"
+        ).fetchone()
+        if next_song:
+            conn.execute(
+                "UPDATE queue SET status='playing', started_at=?, finished_at=NULL WHERE id=?",
+                (timestamp, next_song["id"]),
+            )
+        bump_player(conn, "load")
+        conn.commit()
+    return {"ok": True, "idempotent": False}
 
 
 @app.delete("/api/queue/{song_id}")
@@ -1527,6 +1573,7 @@ def prepare_autodj(request: Request):
     ]
     random.shuffle(candidates)
     if not candidates:
+        provider = "nouzový zásobník"
         candidates = [
             song for song in emergency
             if song.get("video_id") not in recent and is_autodj_party_candidate(song)
@@ -1555,6 +1602,8 @@ def get_player_state(request: Request):
         state = dict(conn.execute("SELECT * FROM player_state WHERE id=1").fetchone())
         playing = current_song(conn)
     state["now_playing"] = dict(playing) if playing else None
+    if playing:
+        state["now_playing"]["is_autodj"] = playing["requester_id"] == "autodj"
     return state
 
 

@@ -1,5 +1,37 @@
 # PUB Jukebox 1.9.2
 
+## AutoDJ a ovládání hostů
+
+- Vyhledávání hosta je první panel pod hlavičkou. Krátký tip pod ním vysvětluje, že autor může přeskočit vlastní právě hrající skladbu.
+- Host převezme právě hrající AutoDJ přes druhý TV deck a plynulý přechod; jinou hostovskou skladbu nepřeruší. Při převzetí se zachovává pořadí stávající hostovské fronty.
+- Cloud i SQLite kontrolují celou uloženou historii AutoDJ, nikoli jen posledních šest videí. Nouzová skladba se použije až po vyčerpání dostupného hledání.
+- Před nasazením těchto změn na Vercel aplikujte migraci `supabase/migrations/20261006021154_autodj_guest_takeover_and_history.sql`. Nahrazuje dvě RPC funkce; nemění ani nemaže řádky fronty. Zachovává oddělené RPC pro přeskočení vlastní skladby.
+
+Úplná regrese (browser test používá dočasnou SQLite databázi a místní metadata; nepouští YouTube ani nemění frontu baru):
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
+for test in tests/test_*.mjs; do node "$test" || exit 1; done
+npm ci --prefix tests/sql
+npm test --prefix tests/sql
+npm ci --prefix tests/browser
+node tests/browser/node_modules/playwright/cli.js install --with-deps chromium
+npm test --prefix tests/browser
+```
+
+## Přeskočení vlastní skladby — 3. října 2026
+
+Host u své právě hrané skladby vidí **Přeskočit moji skladbu**. Po potvrzení
+naváže další skladba podle běžného pořadí fronty. Host je rozpoznaný podle
+podepsané cookie ze stejného prohlížeče, ve kterém skladbu přidal; další přihlášení
+není potřeba. Čekající vlastní skladby lze dál zrušit ve frontě.
+
+Oprávnění kontroluje server i databázová operace. Přeskočení používá konkrétní ID
+skladby a je atomické: opakovaný nebo opožděný požadavek nepřeskočí dalšího hosta.
+Před nasazením aplikace je nutná migrace `add_guest_skip_own_song` pro Supabase;
+lokální SQLite používá stejná pravidla.
+
 ## Ovládání Bass Guardu z mobilu — 15. září 2026
 
 - Samostatné tlačítko „Použít zvuk na PC“ ukládá pouze zvukový profil.
@@ -128,6 +160,9 @@ Viz `.env.example`. Nejdůležitější proměnné:
 python -m pip install -r requirements-dev.txt
 python -m pytest -q
 node tests/test_bass_guard_dsp.mjs
+node tests/test_guest_skip_ui.mjs
+npm ci --prefix tests/sql
+npm test --prefix tests/sql
 ```
 
 ## Základ pro prodej dalším provozovnám
@@ -139,4 +174,3 @@ Profil provozovny je oddělený od zdrojového kódu pomocí `VENUE_KEY`. V data
 Night Bass Guard je praktický adaptivní procesor pro provoz baru, ne certifikovaný měřicí přístroj EBU R128. Cílové LUFS proto představuje průběžný K-vážený odhad, který je vhodné doladit podle konkrétní aparatury a prostoru. Bez zapnutého Windows rozšíření zůstává zvuk YouTube beze změny a administrace pravdivě zobrazuje procesor jako nepřipojený.
 
 Veřejné přehrávání hudby a komerční použití musí provozovatel řešit v souladu s podmínkami YouTube a příslušnými hudebními licencemi. Skladby se přidávají rovnou do fronty a jejich pořadí mění hlasování hostů; obsluha nic nepotvrzuje.
-
