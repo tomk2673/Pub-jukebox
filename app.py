@@ -55,11 +55,16 @@ NETWORK_CACHE: dict[str, float | str] = {"expires": 0.0, "allowed": ""}
 LYRICS_SEARCH_SUFFIX = "lyrics"
 AUTO_DJ_PLAYLISTS = {
     "cz_funk": {
-        "label": "Český funk",
+        "label": "Party Funk CZ/SK/World",
         "queries": [
-            "J.A.R. český funk official",
-            "Monkey Business CZ official",
-            "Roman Holý Sexy Dancers official",
+            "J.A.R. Monkey Business Roman Holý upbeat funk groove official",
+            "slovenský funk groove dance upbeat official",
+            "French funk groove dance upbeat official",
+            "German funk groove dance upbeat official",
+            "UK funk groove dance upbeat official",
+            "USA funk groove dance upbeat official",
+            "modern funk nu funk party groove official",
+            "classic funk iconic dancefloor groove official",
         ],
     },
     "cz_oldies": {
@@ -79,12 +84,13 @@ AUTO_DJ_PLAYLISTS = {
         ],
     },
     "soul_blues": {
-        "label": "Retro Soul & Blues",
+        "label": "Party Soul Reworked",
         "queries": [
-            "1960s soul blues cover famous songs",
-            "vintage Motown soul cover hip hop",
-            "retro soul funk reimagined cover",
-            "1950s 1960s blues soul AI cover",
+            "iconic soul modern funk remix upbeat dance groove",
+            "vintage Motown soul reimagined modern funk upbeat",
+            "retro soul funk reworked party groove",
+            "famous soul song modern cover funk dance",
+            "Moja Reč Nočný let 1960s Soul Blues AI cover similar upbeat",
         ],
     },
     "karaoke": {
@@ -98,8 +104,8 @@ AUTO_DJ_PLAYLISTS = {
 }
 DEFAULT_AUTO_DJ_PLAYLISTS = ["soul_blues", "cz_funk", "cz_oldies", "cz_hiphop"]
 DISCOVERY_QUERIES = {
-    "soul_blues": "1960s soul blues vintage Motown cover",
-    "cz_funk": "český funk J.A.R. Monkey Business Roman Holý",
+    "soul_blues": "iconic soul modern rework upbeat funk groove",
+    "cz_funk": "funk CZ SK French German UK USA old new upbeat groove",
     "cz_oldies": "české oldies Karel Gott Hana Zagorová Marie Rottrová Olympic",
     "cz_hiphop": "starý český hip hop PSH Indy Wich Chaozz",
 }
@@ -126,10 +132,16 @@ NON_MUSIC_TERMS = (
 )
 AUTO_DJ_EMERGENCY_TRACKS = {
     # Only a last-resort seed. Never put the old repetitive emergency trio back here.
-    "Retro Soul & Blues": [
+    "Party Soul Reworked": [
         {"video_id": "EEJTgR2cl1Y", "title": "Moja Reč – Nočný let (1960's Soul Blues AI cover)", "artist": "Moja Reč"},
     ],
 }
+AUTO_DJ_LOW_ENERGY_TERMS = (
+    "ballad", "balada", "slow", "slowed", "chill", "chillout", "ambient",
+    "sleep", "relax", "relaxing", "sad", "melancholy", "melancholic",
+    "acoustic", "unplugged", "piano version", "lullaby", "meditation",
+    "deep blues", "slow blues",
+)
 
 
 def connection() -> sqlite3.Connection:
@@ -830,6 +842,14 @@ def is_music_candidate(song: dict) -> bool:
     return not any(term in text for term in NON_MUSIC_TERMS)
 
 
+def is_autodj_party_candidate(song: dict) -> bool:
+    """Keep automatic playback energetic; guests can still request any valid music."""
+    if not is_music_candidate(song):
+        return False
+    text = f"{song.get('title', '')} {song.get('artist', '')}".casefold()
+    return not any(term in text for term in AUTO_DJ_LOW_ENERGY_TERMS)
+
+
 def current_song(conn: sqlite3.Connection) -> sqlite3.Row | None:
     return conn.execute("SELECT * FROM queue WHERE status='playing' LIMIT 1").fetchone()
 
@@ -979,8 +999,10 @@ def insert_autodj_candidate(song: dict, playlist_label: str) -> dict:
         duplicate = conn.execute(
             """
             SELECT id FROM queue
-            WHERE video_id=? AND requester_id='autodj'
-              AND status IN ('playing','queued','done')
+            WHERE video_id=? AND (
+              status IN ('playing','queued')
+              OR (requester_id='autodj' AND status='done')
+            )
             LIMIT 1
             """,
             (payload["video_id"],),
@@ -1280,6 +1302,7 @@ def add_to_queue(song: Song, request: Request):
                 "requested_by": requested_by,
                 "max_queue": MAX_QUEUE_LENGTH,
                 "max_guest": MAX_ACTIVE_PER_GUEST,
+                "interrupt_autodj": True,
             },
         )
 
@@ -1313,7 +1336,23 @@ def add_to_queue(song: Song, request: Request):
             """,
             (video_id, title, artist, thumbnail, requested_by, requester, now()),
         )
-        if current_song(conn) is None:
+        playing = current_song(conn)
+        if playing is not None and playing["requester_id"] == "autodj":
+            timestamp = now()
+            conn.execute(
+                "UPDATE queue SET status='done', finished_at=? WHERE id=?",
+                (timestamp, playing["id"]),
+            )
+            next_guest = conn.execute(
+                "SELECT id FROM queue WHERE status='queued' AND requester_id <> 'autodj' "
+                "ORDER BY priority DESC, votes DESC, id ASC LIMIT 1"
+            ).fetchone()
+            conn.execute(
+                "UPDATE queue SET status='playing', started_at=? WHERE id=?",
+                (timestamp, next_guest["id"]),
+            )
+            bump_player(conn, "guest_takeover")
+        elif playing is None:
             next_row = conn.execute(
                 """
                 SELECT id FROM queue WHERE status='queued'
@@ -1528,10 +1567,17 @@ def prepare_autodj(request: Request):
         results, provider = search_youtube_catalog(query, 30, fallback_first=False)
     except HTTPException:
         results, provider = [], "nouzový zásobník"
-    candidates = [song for song in results if song.get("video_id") not in recent]
+    candidates = [
+        song for song in results
+        if song.get("video_id") not in recent and is_autodj_party_candidate(song)
+    ]
     random.shuffle(candidates)
     if not candidates:
-        candidates = [song for song in emergency if song.get("video_id") not in recent]
+        provider = "nouzový zásobník"
+        candidates = [
+            song for song in emergency
+            if song.get("video_id") not in recent and is_autodj_party_candidate(song)
+        ]
         random.shuffle(candidates)
     for song in candidates:
         if song.get("video_id") in recent:
@@ -1556,6 +1602,8 @@ def get_player_state(request: Request):
         state = dict(conn.execute("SELECT * FROM player_state WHERE id=1").fetchone())
         playing = current_song(conn)
     state["now_playing"] = dict(playing) if playing else None
+    if playing:
+        state["now_playing"]["is_autodj"] = playing["requester_id"] == "autodj"
     return state
 
 

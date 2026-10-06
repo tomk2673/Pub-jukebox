@@ -1,5 +1,25 @@
 # PUB Jukebox 1.9.2
 
+## AutoDJ a ovládání hostů
+
+- Vyhledávání hosta je první panel pod hlavičkou. Krátký tip pod ním vysvětluje, že autor může přeskočit vlastní právě hrající skladbu.
+- Host převezme právě hrající AutoDJ přes druhý TV deck a plynulý přechod; jinou hostovskou skladbu nepřeruší. Při převzetí se zachovává pořadí stávající hostovské fronty.
+- Cloud i SQLite kontrolují celou uloženou historii AutoDJ, nikoli jen posledních šest videí. Nouzová skladba se použije až po vyčerpání dostupného hledání.
+- Před nasazením těchto změn na Vercel aplikujte migraci `supabase/migrations/20261006021154_autodj_guest_takeover_and_history.sql`. Nahrazuje dvě RPC funkce; nemění ani nemaže řádky fronty. Zachovává oddělené RPC pro přeskočení vlastní skladby.
+
+Úplná regrese (browser test používá dočasnou SQLite databázi a místní metadata; nepouští YouTube ani nemění frontu baru):
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
+for test in tests/test_*.mjs; do node "$test" || exit 1; done
+npm ci --prefix tests/sql
+npm test --prefix tests/sql
+npm ci --prefix tests/browser
+node tests/browser/node_modules/playwright/cli.js install --with-deps chromium
+npm test --prefix tests/browser
+```
+
 ## Přeskočení vlastní skladby — 3. října 2026
 
 Host u své právě hrané skladby vidí **Přeskočit moji skladbu**. Po potvrzení

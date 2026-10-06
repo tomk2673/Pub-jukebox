@@ -394,7 +394,7 @@ def test_tv_player_blocks_customer_youtube_controls(tmp_path, monkeypatch):
         assert 'api("/api/player/transition"' in script.text
         assert 'api("/api/player/ended"' not in script.text
         assert "waitForDeckPlayback" in script.text
-        assert "if (transitioning) return;\n  showSong(song);" in script.text
+        assert "if (transitioning) return;" in script.text
 
 
 def test_guest_mobile_layout_blocks_horizontal_overscroll(tmp_path, monkeypatch):
@@ -553,6 +553,83 @@ def test_autodj_prepares_filler_but_guest_queue_stays_first(tmp_path, monkeypatc
         assert client.post("/api/player/ended").json()["song"]["video_id"] == auto_video_id
 
 
+def test_autodj_long_sequence_avoids_video_repeats_and_uses_emergency_last(tmp_path, monkeypatch):
+    catalog_ids = [f"{letter}1234567890" for letter in "ABCDEFGH"]
+    calls = []
+
+    def fake_catalog(query, limit, fallback_first=False):
+        calls.append(query)
+        fresh = [
+            {"video_id": video_id, "title": "Upbeat funk groove", "artist": f"Artist {index}", "thumbnail": ""}
+            for index, video_id in enumerate(catalog_ids)
+        ]
+        return fresh, "YouTube"
+
+    monkeypatch.setattr(jukebox, "search_youtube_catalog", fake_catalog)
+    monkeypatch.setattr(jukebox.random, "shuffle", lambda items: None)
+
+    with make_client(tmp_path, monkeypatch) as client:
+        login(client)
+        with jukebox.connection() as conn:
+            conn.execute("UPDATE venue_settings SET autodj_playlists=?", ('["soul_blues"]',))
+        played = []
+        for _ in range(len(catalog_ids)):
+            prepared = client.post("/api/player/autodj/prepare").json()
+            assert prepared["prepared"] is True
+            video_id = prepared["song"]["video_id"]
+            assert video_id not in played
+            assert video_id != "EEJTgR2cl1Y"
+            played.append(video_id)
+            assert client.post("/api/player/start").status_code == 200
+            assert client.post("/api/player/ended").status_code == 200
+
+        monkeypatch.setattr(
+            jukebox,
+            "search_youtube_catalog",
+            lambda *args, **kwargs: ([], "YouTube"),
+        )
+        fallback = client.post("/api/player/autodj/prepare").json()
+        assert fallback["prepared"] is True
+        assert fallback["song"]["video_id"] == "EEJTgR2cl1Y"
+        assert fallback["provider"] == "nouzový zásobník"
+        assert len(set(played)) == len(played)
+        assert calls
+        assert client.post("/api/player/start").status_code == 200
+        assert client.post("/api/player/ended").status_code == 200
+        assert client.post("/api/player/autodj/prepare").json()["prepared"] is False
+
+
+def test_guest_immediately_takes_over_playing_autodj(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        with jukebox.connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO queue(video_id,title,artist,requested_by,requester_id,priority,status,created_at,started_at)
+                VALUES(?,?,?,?,?,-100,'playing',?,?)
+                """,
+                (VIDEO_B, "Auto playing", "AutoDJ", "AutoDJ · Party Funk", "autodj", jukebox.now(), jukebox.now()),
+            )
+            conn.commit()
+        join(client)
+        guest = add(client, VIDEO_A, "Guest takes over").json()
+        assert guest["status"] == "playing"
+
+        with jukebox.connection() as conn:
+            old_auto = conn.execute("SELECT status FROM queue WHERE video_id=?", (VIDEO_B,)).fetchone()
+            state = conn.execute("SELECT action FROM player_state WHERE id=1").fetchone()
+        assert old_auto["status"] == "done"
+        assert state["action"] == "guest_takeover"
+
+
+def test_autodj_party_filter_rejects_slow_melancholic_candidates():
+    assert jukebox.is_autodj_party_candidate(
+        {"title": "Upbeat funk groove", "artist": "Party Band"}
+    )
+    assert not jukebox.is_autodj_party_candidate(
+        {"title": "Slow melancholic soul ballad", "artist": "Singer"}
+    )
+
+
 def test_autodj_uses_emergency_tracks_when_youtube_search_is_down(tmp_path, monkeypatch):
     monkeypatch.setattr(
         jukebox,
@@ -675,6 +752,7 @@ def test_supabase_routes_use_rpc(tmp_path, monkeypatch):
 
     assert [action for action, _ in calls] == ["health", "add_song", "queue_list"]
     assert calls[1][1]["max_queue"] == jukebox.MAX_QUEUE_LENGTH
+    assert calls[1][1]["interrupt_autodj"] is True
 
 
 def test_supabase_transition_uses_dedicated_idempotent_rpc(monkeypatch):

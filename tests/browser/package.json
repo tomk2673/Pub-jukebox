@@ -1,0 +1,9 @@
+{
+  "name": "jukebox-browser-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {"test": "node guest.mjs"},
+  "devDependencies": {
+    "playwright": "1.55.0"
+  }
+}

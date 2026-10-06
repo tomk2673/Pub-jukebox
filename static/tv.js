@@ -663,8 +663,38 @@ function showSong(song) {
 
 async function applyState(state, force = false) {
   const song = state.now_playing;
+  const previousSong = currentSong;
   effectiveVolume = state.night_mode ? Math.min(state.volume, nightVolume) : state.volume;
   if (transitioning) return;
+
+  const guestTakesOverAutoDj = Boolean(
+    song && previousSong
+    && song.video_id !== previousSong.video_id
+    && (previousSong.is_autodj ?? String(previousSong.requested_by || "").startsWith("AutoDJ"))
+    && !(song.is_autodj ?? String(song.requested_by || "").startsWith("AutoDJ"))
+  );
+  if (guestTakesOverAutoDj && playbackEnabled && deckReady.every(Boolean)) {
+    transitioning = true;
+    const outgoing = activeDeck;
+    const incoming = inactiveDeck();
+    try {
+      await startIncomingSong(incoming, song);
+      await crossfadeDecks(outgoing, incoming, SMOOTH_MIX_DURATION_MS);
+      players[outgoing]?.pauseVideo();
+      players[outgoing]?.setVolume(0);
+      activeDeck = incoming;
+      currentVideo = song.video_id;
+      queuedNextVideo = null;
+      outroTriggeredVideo = null;
+      setDeckVisibility();
+      players[activeDeck]?.setVolume(effectiveVolume);
+    } catch (_) {
+      resetDeck(incoming);
+    } finally {
+      transitioning = false;
+    }
+  }
+
   showSong(song);
   if (!playbackEnabled) return;
   if (!deckReady.every(Boolean)) return;
