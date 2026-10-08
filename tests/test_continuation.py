@@ -185,3 +185,20 @@ def test_supabase_sourced_add_is_atomic_rpc(monkeypatch):
         "thumbnail": "", "requested_by": "Guest", "max_queue": jukebox.MAX_QUEUE_LENGTH,
         "max_guest": jukebox.MAX_ACTIVE_PER_GUEST, "source_playlist": "cz_oldies",
     })]
+
+
+def test_preview_and_album_are_not_auto_tracks_and_old_buffer_is_replaced(tmp_path, monkeypatch):
+    catalog(monkeypatch, [3, 4])
+    with client_for(tmp_path, monkeypatch) as client:
+        login(client)
+        add(client, 1, "cz_funk")
+        old = jukebox.insert_autodj_candidate({"video_id": song_id(2), "title": "Monkey Business (Upoutávka)"},
+                                             "Český funk", "cz_funk")["song"]
+        result = client.post("/api/player/autodj/prepare").json()
+        assert result["song"]["id"] != old["id"]
+        assert result["song"]["source_playlist"] == "cz_funk"
+        assert old["id"] not in [song["id"] for song in client.get("/api/queue").json()]
+    assert not jukebox.is_autodj_music_candidate({"title": "PSH (Full Album)"})
+    assert not jukebox.is_autodj_music_candidate({"title": "Nová upoutavka"})
+    assert jukebox.is_music_candidate({"title": "PSH (Full Album)"})  # explicit guest music remains available
+    assert jukebox.is_autodj_music_candidate({"title": "PSH - Parket"})

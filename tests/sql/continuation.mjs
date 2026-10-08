@@ -45,6 +45,8 @@ try {
   const directory = new URL('../../supabase/migrations/', import.meta.url);
   const filename = fs.readdirSync(directory).find(name => name.endsWith('_continue_last_playlist.sql'));
   await db.exec(fs.readFileSync(new URL(filename, directory), 'utf8'));
+  const followup = fs.readdirSync(directory).find(name => name.endsWith('_replace_invalid_autodj_buffer.sql'));
+  await db.exec(fs.readFileSync(new URL(followup, directory), 'utf8'));
   const rpc = async (action, payload = {}) => (await db.query(
     'select public.jukebox_continuation_rpc($1,$2::jsonb) as result', [action, JSON.stringify(payload)],
   )).rows[0].result;
@@ -63,8 +65,14 @@ try {
   assert.equal((await rpc('add_song', payload(1)))._status, 409);
   await core('player_start');
   assert.equal((await rpc('status')).continuation.id, first.id);
-  const buffered = await rpc('prepare', {...payload(2), continuation_id: first.id});
+  let buffered = await rpc('prepare', {...payload(2), continuation_id: first.id});
   assert.equal(buffered.song.source_playlist, 'cz_funk');
+  const invalidBufferId = buffered.song.id;
+  await db.exec(`reset role; update jukebox_private.queue set title='Monkey Business (Upoutávka)' where id=${invalidBufferId}; set role anon;`);
+  buffered = await rpc('prepare', {...payload(34), continuation_id:first.id, replace_song_id:invalidBufferId});
+  assert.notEqual(buffered.song.id,invalidBufferId,'invalid buffer can be replaced within the same playlist');
+  const lateReplacement = await rpc('prepare', {...payload(35), continuation_id:first.id, replace_song_id:invalidBufferId});
+  assert.equal(lateReplacement.song.id,buffered.song.id,'late correction preserves the newer buffer');
   const otherGuest = await rpc('add_song', {...payload(3, 'cz_oldies'), requester_id: 'guest-b'});
   assert.equal((await rpc('status')).continuation.source_playlist, 'cz_funk', 'queued guest does not change current playlist');
   const next = await core('player_ended');
