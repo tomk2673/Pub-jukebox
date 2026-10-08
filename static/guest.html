@@ -70,15 +70,19 @@
 
     <section class="panel discovery-panel">
       <div class="eyebrow">RYCHLÝ VÝBĚR</div>
-      <h2>Vyber ze seznamu</h2>
+      <h2>Další skladby z playlistu</h2>
+      <p class="small muted" id="continuationNote">Při prázdné frontě automaticky pokračuje playlist poslední skladby.</p>
       <div class="discovery-tabs" role="tablist" aria-label="Seznamy skladeb">
-        <button class="btn secondary compact active" type="button" data-discovery="popular">★ Oblíbené v baru</button>
+        <button class="btn secondary compact active" type="button" data-discovery="continue">↻ Pokračovat v playlistu</button>
+        <button class="btn secondary compact" type="button" data-discovery="popular">★ Oblíbené v baru</button>
+        <button class="btn secondary compact" type="button" data-discovery="soul_blues">Retro Soul &amp; Blues</button>
         <button class="btn secondary compact" type="button" data-discovery="cz_funk">Český funk</button>
         <button class="btn secondary compact" type="button" data-discovery="cz_oldies">Oldies</button>
         <button class="btn secondary compact" type="button" data-discovery="cz_hiphop">Starý hip-hop</button>
       </div>
       <div class="status" id="discoverStatus" role="status"></div>
       <div class="results discover-results" id="discoverResults"></div>
+      <button class="btn secondary compact" type="button" id="moreDiscovery">Další nabídka</button>
     </section>
 
     <div class="section-head">

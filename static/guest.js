@@ -1,5 +1,8 @@
 const $ = (id) => document.getElementById(id);
-const state = { config: null, queue: [], busy: false, skipping: null, queueVersion: 0 };
+const state = {
+  config: null, queue: [], busy: false, skipping: null, queueVersion: 0,
+  discovery: "continue", discoveryVersion: 0, discoveryOffset: 0, discoverySeen: new Set(),
+};
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -129,8 +132,13 @@ async function loadQueue(silent = false) {
   try {
     const queue = await api("/api/queue");
     if (version !== state.queueVersion) return;
+    const previous = state.queue.find((song) => song.status === "playing")?.id;
     state.queue = queue;
     renderQueue();
+    const current = queue.find((song) => song.status === "playing")?.id;
+    if (previous !== undefined && previous !== current && state.discovery === "continue") {
+      void loadDiscovery("continue");
+    }
     $("connection").textContent = "online";
   } catch (error) {
     if (version !== state.queueVersion) return;
@@ -187,17 +195,35 @@ async function search(event) {
   }
 }
 
-async function loadDiscovery(category = "popular") {
+async function loadDiscovery(category = "continue", more = false) {
+  const version = ++state.discoveryVersion;
+  state.discovery = category;
+  if (!more) { state.discoveryOffset = 0; state.discoverySeen.clear(); }
+  else { state.discoveryOffset = (state.discoveryOffset + 1) % 1001; }
   const buttons = [...document.querySelectorAll("[data-discovery]")];
   buttons.forEach((button) => button.classList.toggle("active", button.dataset.discovery === category));
+  $("moreDiscovery").classList.toggle("hidden", category !== "continue");
+  $("moreDiscovery").disabled = true;
   setStatus("Načítám výběr…", "", "discoverStatus");
   $("discoverResults").replaceChildren();
   try {
-    const data = await api(`/api/discover?category=${encodeURIComponent(category)}`);
+    const excluded = [...state.discoverySeen].slice(-180).join(",");
+    const data = await api(`/api/discover?category=${encodeURIComponent(category)}&offset=${state.discoveryOffset}&exclude=${encodeURIComponent(excluded)}`);
+    if (version !== state.discoveryVersion) return;
     renderResults(data.items, "discoverResults", "discoverStatus");
-    setStatus(`${data.items.length} tipů · ${data.source}`, "success", "discoverStatus");
+    data.items.forEach((song) => state.discoverySeen.add(song.video_id));
+    $("continuationNote").textContent = category === "continue" && data.playlist
+      ? `Navazuje ${data.playlist}. ${data.autodj_enabled === false ? "Automatické pokračování je vypnuté." : "Při prázdné frontě pokračuje automaticky; tvoje volba má přednost."}`
+      : "Při prázdné frontě automaticky pokračuje playlist poslední skladby.";
+    const message = data.items.length
+      ? `${data.items.length} tipů · ${data.playlist || data.source}`
+      : (data.reason === "no_playlist" ? "Obsluha zatím nemá vybraný playlist." : "V tomto výběru už vše hrálo. Zkus Další nabídku.");
+    setStatus(message, data.items.length ? "success" : "", "discoverStatus");
   } catch (error) {
+    if (version !== state.discoveryVersion) return;
     setStatus(error.message, "error", "discoverStatus");
+  } finally {
+    if (version === state.discoveryVersion) $("moreDiscovery").disabled = false;
   }
 }
 
@@ -247,6 +273,7 @@ async function boot() {
   $("searchForm").addEventListener("submit", search);
   $("skipOwnSong").addEventListener("click", skipOwnSong);
   $("refreshButton").addEventListener("click", () => loadQueue());
+  $("moreDiscovery").addEventListener("click", () => loadDiscovery(state.discovery, true));
   document.querySelectorAll("[data-discovery]").forEach((button) => {
     button.addEventListener("click", () => loadDiscovery(button.dataset.discovery));
   });

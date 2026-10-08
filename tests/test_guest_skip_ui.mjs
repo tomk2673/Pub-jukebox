@@ -15,6 +15,8 @@ const get = id => { if (!elements.has(id)) elements.set(id, element()); return e
 const context = vm.createContext({document: {getElementById: get, createElement: element}, window: {confirm: () => true}, AbortController, setTimeout, clearTimeout});
 const source = fs.readFileSync(new URL('../static/guest.js', import.meta.url), 'utf8').replace(/\nboot\(\);\s*$/, '');
 vm.runInContext(source, context);
+// Discovery has its own integration test; isolate skip/poll assertions from its refresh.
+vm.runInContext('state.discovery = "popular"', context);
 const own = {id: 1, video_id: 'a', title: 'Own song', status: 'playing', requested_by_me: true};
 const next = {id: 2, video_id: 'b', title: 'Someone else', status: 'queued', requested_by_me: false};
 function show(queue) { context.queue = queue; vm.runInContext('state.queue = queue; renderQueue()', context); }
