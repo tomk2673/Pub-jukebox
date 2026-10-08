@@ -25,8 +25,16 @@ let lastTransitionId = null;
 let transitionHistory = [];
 let songsSinceScratch = 99;
 let autoDjEnabled = true;
-let autoDjBusy = false;
+let autoDjPending = null;
+let autoDjPrepared = false;
 let nextAutoDjAttempt = 0;
+let idleStartBusy = false;
+let nextIdleStartAttempt = 0;
+let preloadBusy = false;
+let playbackPaused = false;
+let nextPlaybackResumeAttempt = 0;
+let blockedDeck = null;
+let blockedVideo = null;
 let outroTriggeredVideo = null;
 let outroCheckBusy = false;
 let playbackEnabled = true;
@@ -65,18 +73,48 @@ async function api(path, options = {}) {
       && path !== "/api/admin/login") {
     throw new Error("Mobilní náhled nemění přehrávání ani frontu.");
   }
-  const response = await fetch(path, {
-    ...options,
-    headers: { ...(options.body ? { "content-type": "application/json" } : {}), ...(options.headers || {}) },
-  });
-  let data = null;
-  try { data = await response.json(); } catch (_) { data = {}; }
-  if (!response.ok) {
-    const error = new Error(data.detail || "Něco se nepovedlo.");
-    error.status = response.status;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), path === "/api/player/autodj/prepare" ? 55000 : 15000);
+  try {
+    const response = await fetch(path, {
+      ...options,
+      signal: controller.signal,
+      headers: { ...(options.body ? { "content-type": "application/json" } : {}), ...(options.headers || {}) },
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      const error = new Error(data.detail || "Něco se nepovedlo.");
+      error.status = response.status;
+      throw error;
+    }
+    return data;
+  } catch (error) {
+    if (controller.signal.aborted) {
+      const timeoutError = new Error("Připojení se zdrželo. Přehrávání zkusím znovu.");
+      timeoutError.status = 503;
+      throw timeoutError;
+    }
     throw error;
+  } finally {
+    clearTimeout(timeout);
   }
-  return data;
+}
+
+function showPlaybackStatus(message = "") {
+  const status = $("playbackStatus");
+  if (!status) return;
+  status.textContent = message;
+  status.classList.toggle("hidden", !message);
+}
+
+function handlePlaybackError(error) {
+  if (error?.status === 401) {
+    authenticated = false;
+    $("loginView").classList.remove("hidden");
+    $("loginStatus").textContent = "Přihlášení vypršelo. Zadej PIN pro pokračování.";
+    return;
+  }
+  showPlaybackStatus(error?.message || "Připojení vypadlo. Přehrávání zkusím znovu.");
 }
 
 function unlockTransitionAudio() {
@@ -265,35 +303,71 @@ function setAllDeckVolumes() {
 }
 
 async function queuedSongs() {
-  return (await api("/api/queue").catch(() => [])).filter((song) => song.status === "queued");
+  // An unreadable queue is not an empty queue: never substitute AutoDJ on a failed read.
+  return (await api("/api/queue")).filter((song) => song.status === "queued");
+}
+
+async function prepareAutoDj(queueEmpty = false) {
+  if (!playbackEnabled || !authenticated || !autoDjEnabled) return null;
+  if (autoDjPending) return autoDjPending;
+  if (Date.now() < nextAutoDjAttempt && !(queueEmpty && autoDjPrepared)) return null;
+  autoDjPrepared = false;
+  autoDjPending = (async () => {
+    try {
+      const result = await api("/api/player/autodj/prepare", { method: "POST" });
+      autoDjPrepared = Boolean(result.prepared);
+      nextAutoDjAttempt = Date.now() + (result.prepared ? 30000 : 5000);
+      if (!result.prepared && result.enabled !== false) {
+        showPlaybackStatus("AutoDJ hledá další skladbu. Za chvíli zkusí další nabídku.");
+      } else {
+        showPlaybackStatus();
+      }
+      return result;
+    } catch (error) {
+      nextAutoDjAttempt = Date.now() + 5000;
+      throw error;
+    } finally {
+      autoDjPending = null;
+    }
+  })();
+  return autoDjPending;
 }
 
 async function makeSureNextSongExists() {
   let queued = await queuedSongs();
   if (!queued.length && autoDjEnabled) {
-    await api("/api/player/autodj/prepare", { method: "POST" }).catch(() => null);
+    await prepareAutoDj(true);
     queued = await queuedSongs();
   }
   return queued;
 }
 
 async function preloadNextSong() {
-  if (!playbackEnabled || !authenticated || !deckReady.every(Boolean) || transitioning) return null;
-  const queued = await makeSureNextSongExists();
-  const next = queued[0] || null;
-  if (!next) {
-    queuedNextVideo = null;
+  if (!playbackEnabled || !authenticated || !deckReady.every(Boolean) || transitioning || preloadBusy) return null;
+  preloadBusy = true;
+  try {
+    const queued = await makeSureNextSongExists();
+    if (transitioning || !authenticated || !playbackEnabled) return null;
+    const next = queued[0] || null;
+    if (!next) {
+      queuedNextVideo = null;
+      return null;
+    }
+    const target = inactiveDeck();
+    if (deckVideos[target] !== next.video_id || deckErrors[target]) {
+      deckErrors[target] = null;
+      players[target].cueVideoById(next.video_id);
+      players[target].setVolume(0);
+      deckVideos[target] = next.video_id;
+    }
+    queuedNextVideo = next.video_id;
+    return next;
+  } catch (error) {
+    handlePlaybackError(error);
     return null;
+  } finally {
+    preloadBusy = false;
   }
-  const target = inactiveDeck();
-  if (deckVideos[target] !== next.video_id || deckErrors[target]) {
-    deckErrors[target] = null;
-    players[target].cueVideoById(next.video_id);
-    players[target].setVolume(0);
-    deckVideos[target] = next.video_id;
-  }
-  queuedNextVideo = next.video_id;
-  return next;
 }
 
 function settleDeckPlayback(index, error = null) {
@@ -413,7 +487,7 @@ async function crossfadeDecks(outgoing, incoming, durationMs = MIX_DURATION_MS) 
 }
 
 async function finishCurrentSong(earlyMix = false) {
-  if (!playbackEnabled || !authenticated || transitioning || Date.now() < playbackRetryAt) return;
+  if (!playbackEnabled || !authenticated || playbackPaused || transitioning || Date.now() < playbackRetryAt) return;
   const currentSongId = Number(currentSong?.id);
   if (!Number.isInteger(currentSongId) || currentSongId <= 0) {
     await sync(true);
@@ -452,7 +526,8 @@ async function finishCurrentSong(earlyMix = false) {
       showSong(next);
       players[activeDeck]?.setVolume(effectiveVolume);
     }
-  } catch (_) {
+  } catch (error) {
+    handlePlaybackError(error);
     if (reserved && next) {
       players[outgoing]?.pauseVideo();
       players[outgoing]?.setVolume(0);
@@ -483,10 +558,25 @@ async function finishCurrentSong(earlyMix = false) {
 }
 
 async function monitorDjOutro() {
-  if (!playbackEnabled || !authenticated || Date.now() < playbackRetryAt
+  if (!playbackEnabled || !authenticated || playbackPaused || Date.now() < playbackRetryAt
       || !deckReady[activeDeck] || transitioning || outroCheckBusy || !currentVideo) return;
   const deck = players[activeDeck];
-  if (!deck || deck.getPlayerState() !== YT.PlayerState.PLAYING) return;
+  if (!deck) return;
+  const playerState = deck.getPlayerState();
+  // Recover even when YouTube's ENDED callback was missed (sleep/network/background tab).
+  if ((playerState === YT.PlayerState.ENDED && Date.now() >= nextPlaybackResumeAttempt)
+      || isUnavailableVideo(deckErrors[activeDeck])) {
+    await finishCurrentSong(false);
+    return;
+  }
+  if (playerState !== YT.PlayerState.PLAYING) {
+    if (blockedDeck === null && Date.now() >= nextPlaybackResumeAttempt
+        && [-1, YT.PlayerState.CUED, YT.PlayerState.PAUSED].includes(playerState)) {
+      nextPlaybackResumeAttempt = Date.now() + 5000;
+      deck.playVideo();
+    }
+    return;
+  }
   const duration = Number(deck.getDuration?.() || 0);
   const position = Number(deck.getCurrentTime?.() || 0);
   const remaining = duration - position;
@@ -524,7 +614,13 @@ function onDeckStateChange(index, event) {
   if (event.data === YT.PlayerState.PLAYING) {
     deckErrors[index] = null;
     settleDeckPlayback(index);
-    $("tapToPlay").classList.add("hidden");
+    if (blockedDeck === index) {
+      blockedDeck = null;
+      blockedVideo = null;
+    }
+    if (index === activeDeck) nextPlaybackResumeAttempt = 0;
+    if (blockedDeck === null) $("tapToPlay").classList.add("hidden");
+    showPlaybackStatus();
   }
   if (index === activeDeck && event.data === YT.PlayerState.ENDED && !transitioning) {
     finishCurrentSong(false);
@@ -566,6 +662,8 @@ function makeDeck(index, elementId) {
       onStateChange: (event) => onDeckStateChange(index, event),
       onError: (event) => onDeckError(index, event),
       onAutoplayBlocked: () => {
+        blockedDeck = index;
+        blockedVideo = deckVideos[index];
         $("tapToPlay").classList.remove("hidden");
         settleDeckPlayback(index, new Error("Prohlížeč čeká na povolení přehrávání."));
       },
@@ -574,6 +672,8 @@ function makeDeck(index, elementId) {
 }
 
 function createPlayers() {
+  // The cached iframe API may have fired its readiness callback before this deferred script.
+  apiReady = apiReady || typeof window.YT?.Player === "function";
   if (!playbackEnabled || !apiReady || players[0] || players[1]) return;
   if (!$("playerA") || !$("playerB")) return;
   players[0] = makeDeck(0, "playerA");
@@ -610,7 +710,9 @@ function applyDisplay(display) {
   displayMode = ["clip", "dj", "menu"].includes(display.tv_mode) ? display.tv_mode : "clip";
   transitionMode = display.transition_mode === "none" ? "none" : "scratch";
   transitionVolume = Math.min(100, Math.max(0, Number(display.transition_volume ?? 55)));
-  autoDjEnabled = display.autodj_enabled !== false;
+  const enabled = display.autodj_enabled !== false;
+  if (enabled !== autoDjEnabled) nextAutoDjAttempt = nextIdleStartAttempt = 0;
+  autoDjEnabled = enabled;
   const brand = display.business_name || "PUB JUKEBOX";
   document.body.dataset.mode = displayMode;
   document.title = `${brand} · TV`;
@@ -627,20 +729,30 @@ function applyDisplay(display) {
 }
 
 async function ensureAutoDjBuffer(state) {
-  if (!playbackEnabled || !authenticated || !autoDjEnabled || autoDjBusy || Date.now() < nextAutoDjAttempt) return;
-  autoDjBusy = true;
-  nextAutoDjAttempt = Date.now() + 30000;
+  if (!playbackEnabled || !authenticated || playbackPaused || transitioning) return;
+  if (state.now_playing) {
+    if (autoDjEnabled) await prepareAutoDj().catch(handlePlaybackError);
+    return;
+  }
+  if (!deckReady.every(Boolean) || idleStartBusy || Date.now() < nextIdleStartAttempt) return;
+  idleStartBusy = true;
+  nextIdleStartAttempt = Date.now() + 5000;
   try {
-    const result = await api("/api/player/autodj/prepare", { method: "POST" });
-    if (result.prepared && !state.now_playing) {
-      await api("/api/player/start", { method: "POST" });
+    // Start an existing guest/buffer first; catalog failure must never hold up the queue.
+    let result = await api("/api/player/start", { method: "POST" });
+    if (!result.song && autoDjEnabled) {
+      const prepared = await prepareAutoDj(true);
+      if (prepared?.prepared && autoDjEnabled && !playbackPaused) {
+        result = await api("/api/player/start", { method: "POST" });
+      }
+    }
+    if (result.song) {
       setTimeout(() => sync(true), 250);
     }
-    setTimeout(() => preloadNextSong(), 250);
-  } catch (_) {
-    // AutoDJ doplní zásobník při další kontrole.
+  } catch (error) {
+    handlePlaybackError(error);
   } finally {
-    autoDjBusy = false;
+    idleStartBusy = false;
   }
 }
 
@@ -669,12 +781,19 @@ async function applyState(state, force = false) {
   if (!playbackEnabled) return;
   if (!deckReady.every(Boolean)) return;
 
+  if (state.revision !== lastRevision) {
+    if (state.action === "pause") playbackPaused = true;
+    if (state.action === "resume" || state.action === "load") playbackPaused = false;
+  }
+
   setAllDeckVolumes();
 
   if (song && (force || song.video_id !== currentVideo)) {
     if (song.video_id !== currentVideo) {
       const deck = players[activeDeck];
       if (deckVideos[activeDeck] !== song.video_id) {
+        deckErrors[activeDeck] = null;
+        nextPlaybackResumeAttempt = Date.now() + 5000;
         deck.loadVideoById(song.video_id);
         deckVideos[activeDeck] = song.video_id;
       } else {
@@ -704,13 +823,12 @@ async function sync(force = false) {
   try {
     const [state, display] = await Promise.all([api("/api/player/state"), api("/api/display")]);
     applyDisplay(display);
+    createPlayers();
+    $("loginView").classList.add("hidden");
     await applyState(state, force);
     ensureAutoDjBuffer(state);
   } catch (error) {
-    if (error.status === 401) {
-      authenticated = false;
-      $("loginView").classList.remove("hidden");
-    }
+    handlePlaybackError(error);
   } finally {
     syncBusy = false;
   }
@@ -729,7 +847,7 @@ async function startTv() {
   if (deckReady.every(Boolean)) {
     await api("/api/player/start", { method: "POST" });
     await sync(true);
-    players[activeDeck]?.playVideo();
+    if (!playbackPaused) players[activeDeck]?.playVideo();
   }
   if (navigator.wakeLock) navigator.wakeLock.request("screen").catch(() => {});
 }
@@ -744,6 +862,30 @@ async function login(event) {
   } catch (error) {
     $("loginStatus").textContent = error.message;
   }
+}
+
+function resumeBlockedPlayback() {
+  if (!playbackEnabled || !authenticated || playbackPaused) return;
+  unlockTransitionAudio();
+  playbackRetryAt = nextPlaybackResumeAttempt = 0;
+  // Browser activation must reach the incoming deck too, while its volume stays zero.
+  if (blockedDeck !== null && deckReady[blockedDeck] && blockedVideo) {
+    const deck = players[blockedDeck];
+    if (deckVideos[blockedDeck] !== blockedVideo) {
+      deck.cueVideoById(blockedVideo);
+      deckVideos[blockedDeck] = blockedVideo;
+    }
+    deck.setVolume(blockedDeck === activeDeck ? effectiveVolume : 0);
+    deck.playVideo();
+  }
+  if (deckReady[activeDeck] && currentVideo) {
+    if (!transitioning && players[activeDeck]?.getPlayerState() === YT.PlayerState.ENDED) {
+      finishCurrentSong(false);
+    } else {
+      players[activeDeck]?.playVideo();
+    }
+  }
+  sync(true);
 }
 
 async function boot() {
@@ -763,19 +905,16 @@ async function boot() {
   });
   document.body.dataset.mode = "clip";
   $("loginForm").addEventListener("submit", login);
-  $("tapToPlay").addEventListener("click", () => {
-    unlockTransitionAudio();
-    players.forEach((deck, index) => {
-      if (!deckReady[index] || !deck) return;
-      if (index === activeDeck) deck.playVideo();
-    });
-    $("tapToPlay").classList.add("hidden");
-  });
-  const me = await api("/api/me").catch(() => ({ admin: false }));
-  if (me.admin) await startTv();
+  $("tapToPlay").addEventListener("click", resumeBlockedPlayback);
+  // Polling must survive a failed first connection/config request.
   setInterval(() => sync(), 1500);
   setInterval(() => monitorDjOutro(), 400);
   setInterval(() => preloadNextSong(), 5000);
+  const me = await api("/api/me").catch(() => ({ admin: false }));
+  if (me.admin) {
+    authenticated = true;
+    await startTv().catch(handlePlaybackError);
+  }
 }
 
 boot();

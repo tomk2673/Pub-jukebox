@@ -1,4 +1,17 @@
-# PUB Jukebox 1.10.1
+# PUB Jukebox 1.10.2
+
+## Obnova automatického přehrávání — 8. října 2026
+
+TV kontroluje i skutečný stav YouTube přehrávače: po ztraceném oznámení o konci videa
+naváže další skladbou. Prázdný přehrávač nejdřív spustí existující frontu, teprve potom
+hledá novou AutoDJ skladbu. Výpadek hledání tak nezadrží už připravenou hudbu.
+Příprava AutoDJ sdílí jeden probíhající požadavek; po neúspěchu se opakuje za 5 sekund.
+Neúspěšné načtení fronty ji nepovažuje za prázdnou a časový limit nezruší skladby.
+Ruční pauza i mobilní náhled zůstávají respektované.
+
+Pokud prohlížeč blokuje automatický zvuk, tlačítko **Klepni pro pokračování hudby**
+povolí i druhý přehrávač pro přechod. Síťové chyby a vypršení přihlášení se zobrazí na TV.
+Oprava nevyžaduje databázovou migraci. Po nasazení obnovit `/tv` na barovém počítači.
 
 ## Pokračování posledního playlistu — 8. října 2026
 
@@ -163,9 +176,15 @@ python -m pip install -r requirements-dev.txt
 python -m pytest -q
 node tests/test_bass_guard_dsp.mjs
 node tests/test_guest_skip_ui.mjs
+node tests/test_tv_autostart.mjs
 npm ci --prefix tests/sql
 npm test --prefix tests/sql
 ```
+
+Prohlížečový test TV: `node tests/test_tv_autostart_browser.mjs` (Playwright + Chromium).
+Ověřuje skutečné lokální API/frontu a přechody s testovacím YouTube přehrávačem,
+včetně ztraceného konce videa, ruční pauzy a povolení druhého přehrávače kliknutím.
+Neprovádí změny v produkční frontě ani neověřuje skutečný zvuk v baru.
 
 ## Základ pro prodej dalším provozovnám
 

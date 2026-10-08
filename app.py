@@ -323,7 +323,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="PUB Jukebox", version="1.10.1", lifespan=lifespan)
+app = FastAPI(title="PUB Jukebox", version="1.10.2", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
