@@ -60,6 +60,11 @@ AUTO_DJ_PLAYLISTS = {
             "J.A.R. český funk official",
             "Monkey Business CZ official",
             "Roman Holý Sexy Dancers official",
+            "J.A.R. album funk český",
+            "Monkey Business funk music album",
+            "Sto zvířat Mig 21 funk ska official",
+            "Vojta Dyk B Side Band funk official",
+            "7krát3 český funk soul official",
         ],
     },
     "cz_oldies": {
@@ -68,6 +73,11 @@ AUTO_DJ_PLAYLISTS = {
             "Hana Zagorová hity official",
             "Karel Gott hity official",
             "Marie Rottrová Olympic české hity official",
+            "Václav Neckář Marta Kubišová české hity",
+            "Jiří Schelinger Vladimír Mišík staré hity",
+            "Waldemar Matuška Helena Vondráčková hity",
+            "Michal Prokop Framus Five český soul",
+            "Richard Müller Miroslav Žbirka staré hity",
         ],
     },
     "cz_hiphop": {
@@ -76,6 +86,13 @@ AUTO_DJ_PLAYLISTS = {
             "PSH starý český hip hop official",
             "Indy Wich český hip hop official",
             "Chaozz český hip hop official",
+            "PSH Repertoár album český rap",
+            "Indy Wich My 3 album rap",
+            "Chaozz Zprdeleklika album rap",
+            "Prago Union HDP album rap",
+            "Supercrooo Toxic Funk album rap",
+            "Kontrafakt Murdardo album slovenský rap",
+            "Vec Trosky starý slovenský rap",
         ],
     },
     "soul_blues": {
@@ -85,6 +102,10 @@ AUTO_DJ_PLAYLISTS = {
             "vintage Motown soul cover hip hop",
             "retro soul funk reimagined cover",
             "1950s 1960s blues soul AI cover",
+            "Czech Slovak rap 1960s soul blues AI cover",
+            "90s hip hop vintage soul blues cover",
+            "retro funk soul cover popular songs",
+            "old school rap Motown soul reimagined",
         ],
     },
     "karaoke": {
@@ -230,6 +251,7 @@ def init_db() -> None:
             "created_at": "INTEGER NOT NULL DEFAULT 0",
             "started_at": "INTEGER",
             "finished_at": "INTEGER",
+            "source_playlist": "TEXT NOT NULL DEFAULT ''",
         }
         for column, definition in migrations.items():
             if column not in existing:
@@ -299,7 +321,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="PUB Jukebox", version="1.9.2", lifespan=lifespan)
+app = FastAPI(title="PUB Jukebox", version="1.10.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
@@ -326,6 +348,7 @@ class Song(BaseModel):
     artist: str = Field(default="", max_length=100)
     thumbnail: str = Field(default="", max_length=500)
     requested_by: str = Field(default="", max_length=40)
+    source_playlist: str = Field(default="", max_length=107)
 
 
 class PlayerControl(BaseModel):
@@ -408,6 +431,27 @@ def normalize_autodj_playlists(value) -> list[str]:
 def clean_autodj_queries(value: str) -> str:
     lines = [clean_text(line, 100) for line in value.splitlines()]
     return "\n".join(line for line in lines if len(line) >= 2)[:1000]
+
+
+def clean_playlist_source(value: str) -> str:
+    if not value or value in AUTO_DJ_PLAYLISTS:
+        return value
+    if value.startswith("custom:"):
+        query = clean_text(value[7:], 100)
+        if len(query) >= 2:
+            return f"custom:{query}"
+    raise HTTPException(422, "Neplatný zdrojový playlist.")
+
+
+def song_playlist_source(song: dict) -> str:
+    source = str(song.get("source_playlist") or "")
+    if source:
+        return source
+    # Old AutoDJ rows predate source metadata. A guest's display name is not provenance.
+    if song.get("requester_id") == "autodj" or song.get("is_autodj") is True:
+        label = str(song.get("requested_by", "")).removeprefix("AutoDJ · ")
+        return next((key for key, playlist in AUTO_DJ_PLAYLISTS.items() if playlist["label"] == label), "")
+    return ""
 
 
 def client_ip(request: Request) -> str:
@@ -771,7 +815,7 @@ def queue_rows(request: Request | None = None) -> list[dict]:
     with connection() as conn:
         rows = conn.execute(
             """
-            SELECT q.id, q.video_id, q.title, q.artist, q.thumbnail, q.requested_by,
+            SELECT q.id, q.video_id, q.title, q.artist, q.thumbnail, q.requested_by, q.source_playlist,
                    q.votes, q.priority, q.priority_requested, q.status, q.created_at,
                    CASE WHEN v.id IS NULL THEN 0 ELSE 1 END AS voted_by_me,
                    CASE WHEN q.requester_id=? THEN 1 ELSE 0 END AS requested_by_me,
@@ -918,9 +962,27 @@ def transition_queue(current_song_id: int, next_song_id: int | None) -> dict:
     return {"ok": True, "song": row, "idempotent": False}
 
 
+def last_playlist_song(conn: sqlite3.Connection) -> dict | None:
+    rows = conn.execute(
+        """
+        SELECT * FROM queue
+        WHERE (source_playlist <> '' OR requester_id='autodj')
+          AND (status='playing' OR (status IN ('done','removed') AND started_at IS NOT NULL))
+        ORDER BY CASE WHEN status='playing' THEN 0 ELSE 1 END,
+                 COALESCE(finished_at,started_at,created_at) DESC, id DESC
+        """
+    )
+    for row in rows:
+        source = song_playlist_source(dict(row))
+        if source:
+            return {"id": row["id"], "source_playlist": source, "video_id": row["video_id"],
+                    "title": row["title"], "artist": row["artist"]}
+    return None
+
+
 def autodj_status() -> dict:
     if USE_SUPABASE:
-        result = supabase_rpc("jukebox_autodj_rpc", "status")
+        result = supabase_rpc("jukebox_continuation_rpc", "status")
         return result if isinstance(result, dict) else {}
     with connection() as conn:
         prepared = conn.execute(
@@ -932,15 +994,18 @@ def autodj_status() -> dict:
         recent = conn.execute(
             """
             SELECT DISTINCT video_id FROM queue
-            WHERE requester_id='autodj' AND status IN ('playing','queued','done')
+            WHERE status IN ('playing','queued','done')
+               OR (status='removed' AND (started_at IS NOT NULL OR requester_id='autodj'))
             ORDER BY id DESC
             """
         ).fetchall()
+        continuation = last_playlist_song(conn)
     return {
         "prepared": bool(prepared),
         "song": dict(prepared) if prepared else None,
         "completed": int(completed),
         "recent_video_ids": [row["video_id"] for row in recent],
+        "continuation": continuation,
     }
 
 
@@ -957,30 +1022,57 @@ def clear_autodj_buffer() -> dict:
     return {"ok": True, "removed": removed}
 
 
-def insert_autodj_candidate(song: dict, playlist_label: str) -> dict:
+def discard_stale_autodj(source_playlist: str, continuation_id: int) -> None:
+    payload = {"source_playlist": source_playlist, "continuation_id": continuation_id}
+    if USE_SUPABASE:
+        supabase_rpc("jukebox_continuation_rpc", "discard_stale", payload)
+        return
+    with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        if int((last_playlist_song(conn) or {}).get("id", 0)) != continuation_id:
+            return
+        rows = conn.execute("SELECT * FROM queue WHERE status='queued' AND requester_id='autodj'")
+        stale_ids = [row["id"] for row in rows if song_playlist_source(dict(row)) != source_playlist]
+        for song_id in stale_ids:
+            conn.execute("UPDATE queue SET status='removed',finished_at=? WHERE id=?", (now(), song_id))
+        conn.commit()
+
+
+def insert_autodj_candidate(
+    song: dict, playlist_label: str, source_playlist: str = "", continuation_id: int | None = None,
+) -> dict:
     payload = {
         "video_id": song["video_id"],
         "title": clean_text(song.get("title", ""), 160),
         "artist": clean_text(song.get("artist", ""), 100),
         "thumbnail": song.get("thumbnail", "") if str(song.get("thumbnail", "")).startswith("https://") else "",
         "playlist_label": clean_text(playlist_label, 26),
+        "source_playlist": clean_playlist_source(source_playlist),
+        "continuation_id": continuation_id,
     }
     if USE_SUPABASE:
-        result = supabase_rpc("jukebox_autodj_rpc", "prepare", payload)
+        result = supabase_rpc("jukebox_continuation_rpc", "prepare", payload)
         return result if isinstance(result, dict) else {"prepared": False}
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
+        context = last_playlist_song(conn)
+        if continuation_id is not None and int((context or {}).get("id", 0)) != continuation_id:
+            return {"prepared": False, "reason": "stale"}
         existing = conn.execute(
             "SELECT * FROM queue WHERE status='queued' AND requester_id='autodj' ORDER BY id LIMIT 1"
         ).fetchone()
-        if existing:
+        if existing and (not source_playlist or song_playlist_source(dict(existing)) == source_playlist):
             conn.commit()
             return {"prepared": True, "song": dict(existing), "existing": True}
+        if existing:
+            conn.execute("UPDATE queue SET status='removed',finished_at=? WHERE id=?", (now(), existing["id"]))
         duplicate = conn.execute(
             """
             SELECT id FROM queue
-            WHERE video_id=? AND requester_id='autodj'
-              AND status IN ('playing','queued','done')
+            WHERE video_id=? AND (
+                status IN ('playing','queued','done')
+                OR (status='removed' AND (started_at IS NOT NULL OR requester_id='autodj'))
+            )
             LIMIT 1
             """,
             (payload["video_id"],),
@@ -991,8 +1083,8 @@ def insert_autodj_candidate(song: dict, playlist_label: str) -> dict:
         cursor = conn.execute(
             """
             INSERT INTO queue(
-                video_id,title,artist,thumbnail,requested_by,requester_id,priority,created_at
-            ) VALUES(?,?,?,?,?,'autodj',-100,?)
+                video_id,title,artist,thumbnail,requested_by,requester_id,priority,created_at,source_playlist
+            ) VALUES(?,?,?,?,?,'autodj',-100,?,?)
             """,
             (
                 payload["video_id"],
@@ -1001,6 +1093,7 @@ def insert_autodj_candidate(song: dict, playlist_label: str) -> dict:
                 payload["thumbnail"],
                 f"AutoDJ · {payload['playlist_label']}",
                 now(),
+                payload["source_playlist"],
             ),
         )
         row = dict(conn.execute("SELECT * FROM queue WHERE id=?", (cursor.lastrowid,)).fetchone())
@@ -1009,19 +1102,72 @@ def insert_autodj_candidate(song: dict, playlist_label: str) -> dict:
     return {"prepared": True, "song": row, "existing": False}
 
 
-def autodj_program(profile: dict, completed: int) -> tuple[str, str] | None:
+def autodj_program(profile: dict, completed: int, continuation: dict | None = None) -> tuple[str, str, str] | None:
     programs = []
     selected = normalize_autodj_playlists(profile.get("autodj_playlists"))
     for key in selected:
         definition = AUTO_DJ_PLAYLISTS[key]
         queries = definition["queries"]
-        query_index = (completed // max(1, len(selected))) % len(queries)
-        programs.append((definition["label"], queries[query_index]))
+        query_index = completed % len(queries)
+        programs.append((definition["label"], queries[query_index], key))
     for query in clean_autodj_queries(str(profile.get("autodj_custom_queries", ""))).splitlines():
-        programs.append(("Vlastní mix", f"{query} music official"))
+        programs.append(("Vlastní mix", f"{query} music official", f"custom:{query}"))
     if not programs:
         return None
+    source = (continuation or {}).get("source_playlist", "")
+    for program in programs:
+        if program[2] == source:
+            return program
     return programs[completed % len(programs)]
+
+
+def fresh_playlist_songs(profile: dict, status: dict, offset: int = 0, excluded: set | None = None) -> dict:
+    """Keep the last played playlist, changing only its catalog query, never its genre."""
+    completed = int(status.get("completed", 0))
+    program = autodj_program(profile, completed + offset, status.get("continuation"))
+    if not program:
+        return {"items": [], "reason": "no_playlist", "playlist": "", "source_playlist": ""}
+    label, query, source = program
+    blocked = set(status.get("recent_video_ids") or []) | (excluded or set())
+    items = []
+    provider = "YouTube"
+    # A second query covers exhausted/failed results without switching away from this playlist.
+    queries = [query]
+    if source in AUTO_DJ_PLAYLISTS:
+        choices = AUTO_DJ_PLAYLISTS[source]["queries"]
+        # A failed/exhausted pool must not pin the serverless player to the same query forever.
+        index = (completed + offset + now() // 30) % len(choices)
+        queries = [choices[index], choices[(index + 1) % len(choices)]]
+    else:
+        queries.append(f"{source[7:]} songs")
+    for catalog_query in dict.fromkeys(queries):
+        try:
+            found, provider = search_youtube_catalog(catalog_query, 50)
+        except HTTPException:
+            continue
+        items = [
+            {**song, "source_playlist": source}
+            for song in found
+            if VIDEO_ID_RE.fullmatch(str(song.get("video_id", "")))
+            and song["video_id"] not in blocked and is_music_candidate(song)
+        ]
+        if items:
+            break
+    if not items:
+        provider = "nouzový zásobník"
+        items = [
+            {**song, "source_playlist": source,
+             "thumbnail": f"https://i.ytimg.com/vi/{song['video_id']}/mqdefault.jpg"}
+            for song in AUTO_DJ_EMERGENCY_TRACKS.get(label, [])
+            if song["video_id"] not in blocked
+        ]
+    # YouTube can return the same video twice. Never offer duplicate cards.
+    items = list({song["video_id"]: song for song in items}.values())
+    random.shuffle(items)
+    previous_artist = str((status.get("continuation") or {}).get("artist", "")).casefold()
+    if previous_artist:
+        items.sort(key=lambda song: str(song.get("artist", "")).casefold() == previous_artist)
+    return {"items": items, "playlist": label, "source_playlist": source, "source": provider}
 
 
 def public_base(request: Request) -> str:
@@ -1267,21 +1413,23 @@ def add_to_queue(song: Song, request: Request):
     artist = clean_text(song.artist, 100)
     requested_by = clean_text(song.requested_by, 40)
     thumbnail = song.thumbnail if song.thumbnail.startswith("https://") else ""
+    source_playlist = clean_playlist_source(song.source_playlist)
 
     if USE_SUPABASE:
-        return db_rpc(
-            "add_song",
-            {
-                "requester_id": requester,
-                "video_id": video_id,
-                "title": title,
-                "artist": artist,
-                "thumbnail": thumbnail,
-                "requested_by": requested_by,
-                "max_queue": MAX_QUEUE_LENGTH,
-                "max_guest": MAX_ACTIVE_PER_GUEST,
-            },
-        )
+        body = {
+            "requester_id": requester,
+            "video_id": video_id,
+            "title": title,
+            "artist": artist,
+            "thumbnail": thumbnail,
+            "requested_by": requested_by,
+            "max_queue": MAX_QUEUE_LENGTH,
+            "max_guest": MAX_ACTIVE_PER_GUEST,
+            "source_playlist": source_playlist,
+        }
+        if source_playlist:
+            return supabase_rpc("jukebox_continuation_rpc", "add_song", body)
+        return db_rpc("add_song", body)
 
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
@@ -1308,10 +1456,10 @@ def add_to_queue(song: Song, request: Request):
                 )
         cursor = conn.execute(
             """
-            INSERT INTO queue(video_id,title,artist,thumbnail,requested_by,requester_id,created_at)
-            VALUES(?,?,?,?,?,?,?)
+            INSERT INTO queue(video_id,title,artist,thumbnail,requested_by,requester_id,created_at,source_playlist)
+            VALUES(?,?,?,?,?,?,?,?)
             """,
-            (video_id, title, artist, thumbnail, requested_by, requester, now()),
+            (video_id, title, artist, thumbnail, requested_by, requester, now(), source_playlist),
         )
         if current_song(conn) is None:
             next_row = conn.execute(
@@ -1508,43 +1656,28 @@ def prepare_autodj(request: Request):
         return {"enabled": False, "prepared": False}
 
     status = autodj_status()
-    if status.get("prepared"):
+    program = autodj_program(profile, int(status.get("completed", 0)), status.get("continuation"))
+    if status.get("prepared") and program and song_playlist_source(status.get("song") or {}) == program[2]:
         return {"enabled": True, **status}
-    completed = int(status.get("completed", 0))
-    program = autodj_program(profile, completed)
-    if not program:
-        return {"enabled": True, "prepared": False, "reason": "no_playlist"}
-    playlist_label, query = program
-    emergency = [
-        {
-            **song,
-            "thumbnail": f"https://i.ytimg.com/vi/{song['video_id']}/mqdefault.jpg",
-        }
-        for song in AUTO_DJ_EMERGENCY_TRACKS.get(playlist_label, [])
-    ]
-    recent = set(status.get("recent_video_ids") or [])
-    # Search the broad catalog first. Emergency seeds are truly last resort.
-    try:
-        results, provider = search_youtube_catalog(query, 30, fallback_first=False)
-    except HTTPException:
-        results, provider = [], "nouzový zásobník"
-    candidates = [song for song in results if song.get("video_id") not in recent]
-    random.shuffle(candidates)
-    if not candidates:
-        candidates = [song for song in emergency if song.get("video_id") not in recent]
-        random.shuffle(candidates)
-    for song in candidates:
-        if song.get("video_id") in recent:
-            continue
-        prepared = insert_autodj_candidate(song, playlist_label)
+    selection = fresh_playlist_songs(profile, status)
+    continuation_id = int((status.get("continuation") or {}).get("id", 0))
+    for song in selection["items"]:
+        prepared = insert_autodj_candidate(
+            song, selection["playlist"], selection["source_playlist"],
+            continuation_id,
+        )
         if prepared.get("prepared"):
             return {
                 "enabled": True,
-                "playlist": playlist_label,
-                "provider": provider,
+                "playlist": selection["playlist"],
+                "provider": selection["source"],
                 **prepared,
             }
-    return {"enabled": True, "prepared": False, "reason": "no_fresh_track"}
+        if prepared.get("reason") == "stale":
+            return {"enabled": True, **prepared}
+    if status.get("prepared"):
+        discard_stale_autodj(selection["source_playlist"], continuation_id)
+    return {"enabled": True, "prepared": False, "reason": selection.get("reason", "no_fresh_track")}
 
 
 @app.get("/api/player/state")
@@ -1706,7 +1839,9 @@ def fallback_youtube_search(query: str, limit: int) -> list[dict]:
         "no_warnings": True,
         "skip_download": True,
         "extract_flat": "in_playlist",
-        "socket_timeout": 10,
+        "socket_timeout": 5,
+        "retries": 1,
+        "extractor_retries": 0,
         "noplaylist": True,
     }
     with YoutubeDL(options) as ydl:
@@ -1802,9 +1937,17 @@ def search_videos(
 @app.get("/api/discover")
 def discover_songs(
     request: Request,
-    category: Literal["popular", "cz_funk", "cz_oldies", "cz_hiphop"] = Query(default="popular"),
+    category: Literal["continue", "popular", "soul_blues", "cz_funk", "cz_oldies", "cz_hiphop"] = Query(default="popular"),
+    offset: int = Query(default=0, ge=0, le=1000),
+    exclude: str = Query(default="", max_length=2400),
 ):
     require_guest(request)
+    if category == "continue":
+        excluded = {value for value in exclude.split(",") if VIDEO_ID_RE.fullmatch(value)}
+        profile = venue_settings()
+        selection = fresh_playlist_songs(profile, autodj_status(), offset, excluded)
+        selection["items"] = selection["items"][:12]
+        return {"category": category, "autodj_enabled": bool(profile.get("autodj_enabled", True)), **selection}
     fallback = discovery_fallback(None if category == "popular" else category)
     if category == "popular":
         history = [song for song in popular_songs(12) if is_music_candidate(song)]
@@ -1821,5 +1964,8 @@ def discover_songs(
     except HTTPException:
         found, provider = [], "výběr baru"
     seen = {song.get("video_id") for song in found}
-    items = [*found, *(song for song in fallback if song["video_id"] not in seen)][:12]
+    items = [
+        {**song, "source_playlist": category}
+        for song in [*found, *(song for song in fallback if song["video_id"] not in seen)][:12]
+    ]
     return {"items": items, "category": category, "source": provider}
