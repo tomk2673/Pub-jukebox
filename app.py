@@ -130,6 +130,8 @@ NON_MUSIC_TERMS = (
     "interview",
     "trailer",
     "teaser",
+    "upoutávka",
+    "upoutavka",
     "celý film",
     "full movie",
     "epizoda",
@@ -321,7 +323,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="PUB Jukebox", version="1.10.0", lifespan=lifespan)
+app = FastAPI(title="PUB Jukebox", version="1.10.1", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
@@ -874,6 +876,13 @@ def is_music_candidate(song: dict) -> bool:
     return not any(term in text for term in NON_MUSIC_TERMS)
 
 
+def is_autodj_music_candidate(song: dict) -> bool:
+    title = str(song.get("title", "")).casefold()
+    return is_music_candidate(song) and not any(term in title for term in (
+        "full album", "complete album", "celé album", "cele album", "greatest hits", "compilation",
+    ))
+
+
 def current_song(conn: sqlite3.Connection) -> sqlite3.Row | None:
     return conn.execute("SELECT * FROM queue WHERE status='playing' LIMIT 1").fetchone()
 
@@ -1022,8 +1031,8 @@ def clear_autodj_buffer() -> dict:
     return {"ok": True, "removed": removed}
 
 
-def discard_stale_autodj(source_playlist: str, continuation_id: int) -> None:
-    payload = {"source_playlist": source_playlist, "continuation_id": continuation_id}
+def discard_stale_autodj(source_playlist: str, continuation_id: int, replace_song_id: int = 0) -> None:
+    payload = {"source_playlist": source_playlist, "continuation_id": continuation_id, "replace_song_id": replace_song_id}
     if USE_SUPABASE:
         supabase_rpc("jukebox_continuation_rpc", "discard_stale", payload)
         return
@@ -1032,7 +1041,7 @@ def discard_stale_autodj(source_playlist: str, continuation_id: int) -> None:
         if int((last_playlist_song(conn) or {}).get("id", 0)) != continuation_id:
             return
         rows = conn.execute("SELECT * FROM queue WHERE status='queued' AND requester_id='autodj'")
-        stale_ids = [row["id"] for row in rows if song_playlist_source(dict(row)) != source_playlist]
+        stale_ids = [row["id"] for row in rows if row["id"] == replace_song_id or song_playlist_source(dict(row)) != source_playlist]
         for song_id in stale_ids:
             conn.execute("UPDATE queue SET status='removed',finished_at=? WHERE id=?", (now(), song_id))
         conn.commit()
@@ -1040,6 +1049,7 @@ def discard_stale_autodj(source_playlist: str, continuation_id: int) -> None:
 
 def insert_autodj_candidate(
     song: dict, playlist_label: str, source_playlist: str = "", continuation_id: int | None = None,
+    replace_song_id: int = 0,
 ) -> dict:
     payload = {
         "video_id": song["video_id"],
@@ -1049,6 +1059,7 @@ def insert_autodj_candidate(
         "playlist_label": clean_text(playlist_label, 26),
         "source_playlist": clean_playlist_source(source_playlist),
         "continuation_id": continuation_id,
+        "replace_song_id": replace_song_id,
     }
     if USE_SUPABASE:
         result = supabase_rpc("jukebox_continuation_rpc", "prepare", payload)
@@ -1061,7 +1072,7 @@ def insert_autodj_candidate(
         existing = conn.execute(
             "SELECT * FROM queue WHERE status='queued' AND requester_id='autodj' ORDER BY id LIMIT 1"
         ).fetchone()
-        if existing and (not source_playlist or song_playlist_source(dict(existing)) == source_playlist):
+        if existing and existing["id"] != replace_song_id and (not source_playlist or song_playlist_source(dict(existing)) == source_playlist):
             conn.commit()
             return {"prepared": True, "song": dict(existing), "existing": True}
         if existing:
@@ -1149,7 +1160,7 @@ def fresh_playlist_songs(profile: dict, status: dict, offset: int = 0, excluded:
             {**song, "source_playlist": source}
             for song in found
             if VIDEO_ID_RE.fullmatch(str(song.get("video_id", "")))
-            and song["video_id"] not in blocked and is_music_candidate(song)
+            and song["video_id"] not in blocked and is_autodj_music_candidate(song)
         ]
         if items:
             break
@@ -1657,14 +1668,16 @@ def prepare_autodj(request: Request):
 
     status = autodj_status()
     program = autodj_program(profile, int(status.get("completed", 0)), status.get("continuation"))
-    if status.get("prepared") and program and song_playlist_source(status.get("song") or {}) == program[2]:
+    buffered = status.get("song") or {}
+    replace_song_id = int(buffered.get("id", 0)) if status.get("prepared") and not is_autodj_music_candidate(buffered) else 0
+    if status.get("prepared") and not replace_song_id and program and song_playlist_source(buffered) == program[2]:
         return {"enabled": True, **status}
     selection = fresh_playlist_songs(profile, status)
     continuation_id = int((status.get("continuation") or {}).get("id", 0))
     for song in selection["items"]:
         prepared = insert_autodj_candidate(
             song, selection["playlist"], selection["source_playlist"],
-            continuation_id,
+            continuation_id, replace_song_id,
         )
         if prepared.get("prepared"):
             return {
@@ -1676,7 +1689,7 @@ def prepare_autodj(request: Request):
         if prepared.get("reason") == "stale":
             return {"enabled": True, **prepared}
     if status.get("prepared"):
-        discard_stale_autodj(selection["source_playlist"], continuation_id)
+        discard_stale_autodj(selection["source_playlist"], continuation_id, replace_song_id)
     return {"enabled": True, "prepared": False, "reason": selection.get("reason", "no_fresh_track")}
 
 

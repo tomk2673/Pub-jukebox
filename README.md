@@ -1,4 +1,4 @@
-# PUB Jukebox 1.10.0
+# PUB Jukebox 1.10.1
 
 ## Pokračování posledního playlistu — 8. října 2026
 
@@ -10,7 +10,7 @@ Platí pouze pro playlisty povolené obsluhou; vypnutý AutoDJ zůstává vypnut
 
 Host vidí **Pokračovat v playlistu** a **Další nabídka**. Doporučení i automatické
 pokračování vynechávají aktivní frontu, celou uloženou historii přehrávání a odmítnuté
-AutoDJ položky. V rámci stejného playlistu se střídají širší vyhledávací dotazy; nabídka
+AutoDJ položky, upoutávky a celé kompilace/alba. V rámci stejného playlistu se střídají širší vyhledávací dotazy; nabídka
 není totožná s osobním doporučovacím algoritmem YouTube. Jiná verze stejné písně s jiným
 video ID může být další položkou. Při vyčerpání dostupných výsledků se historie neresetuje.
 
@@ -18,7 +18,7 @@ Připravená AutoDJ skladba ze starého playlistu se po změně přehrávaného 
 Opožděné hledání ověřuje ID zdrojové skladby pod stejným zámkem jako přehrávání a
 nesmí přepsat novější výběr. Volby hostů mají stále vyšší prioritu.
 
-Před nasazením aplikovat migraci `continue_last_playlist`. Je aditivní: přidá metadata
+Před nasazením aplikovat migrace `continue_last_playlist` a `replace_invalid_autodj_buffer`. První je aditivní: přidá metadata
 a nové RPC, zachová původní frontu i původní databázové funkce. Testy PostgreSQL používají
 skutečné původní funkce v lokálním PGlite, nikdy produkční hudební frontu.
 
