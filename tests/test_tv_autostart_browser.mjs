@@ -48,7 +48,7 @@ try {
   await page.locator("#nowTitle").filter({hasText:"Test Funk"}).waitFor();
   assert.equal(await page.evaluate(()=>window.fixturePlayers.length),2,"cached iframe API creates both decks");
   const firstGuest=(await (await context.request.post(`${origin}/api/queue`,{data:{
-    video_id:"track999991",title:"First guest takes priority",source_playlist:"cz_funk",
+    video_id:"track999991",title:"First guest takes priority",source_playlist:"funk",
   }})).json());
   await page.evaluate(()=>{window.fixturePlayers[activeDeck].state=0;});
   await page.locator("#nowTitle").filter({hasText:firstGuest.title}).waitFor({timeout:12000});
@@ -68,7 +68,7 @@ try {
   await page.waitForFunction(()=>!playbackPaused && window.fixturePlayers[activeDeck].state===1);
 
   const secondGuest=await (await context.request.post(`${origin}/api/queue`,{data:{
-    video_id:"track999992",title:"Second guest after browser activation",source_playlist:"cz_funk",
+    video_id:"track999992",title:"Second guest after browser activation",source_playlist:"funk",
   }})).json();
   await page.evaluate(()=>{window.fixturePlayers[1-activeDeck].blockOnce=true;
     window.fixturePlayers[activeDeck].state=0;});

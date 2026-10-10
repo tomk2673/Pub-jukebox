@@ -54,45 +54,56 @@ SEARCH_ACTIVITY: dict[str, list[float]] = {}
 NETWORK_CACHE: dict[str, float | str] = {"expires": 0.0, "allowed": ""}
 LYRICS_SEARCH_SUFFIX = "lyrics"
 AUTO_DJ_PLAYLISTS = {
-    "cz_funk": {
-        "label": "Český funk",
+    "world_hits": {
+        "label": "Celosvětové hity",
         "queries": [
-            "J.A.R. český funk official",
-            "Monkey Business CZ official",
-            "Roman Holý Sexy Dancers official",
-            "J.A.R. album funk český",
-            "Monkey Business funk music album",
-            "Sto zvířat Mig 21 funk ska official",
-            "Vojta Dyk B Side Band funk official",
-            "7krát3 český funk soul official",
+            "Mark Ronson Bruno Mars official music video",
+            "Dua Lipa official music video",
+            "Michael Jackson official music video",
+            "Daft Punk Pharrell Williams official music video",
+            "The Weeknd official music video",
+            "Madonna official music video",
+            "Jamiroquai official music video",
+            "Beyonce Rihanna official music video",
         ],
     },
-    "cz_oldies": {
-        "label": "České oldies",
+    "funk": {
+        "label": "Funk",
         "queries": [
-            "Hana Zagorová hity official",
-            "Karel Gott hity official",
-            "Marie Rottrová Olympic české hity official",
-            "Václav Neckář Marta Kubišová české hity",
-            "Jiří Schelinger Vladimír Mišík staré hity",
-            "Waldemar Matuška Helena Vondráčková hity",
-            "Michal Prokop Framus Five český soul",
-            "Richard Müller Miroslav Žbirka staré hity",
+            "James Brown funk official audio",
+            "Parliament Funkadelic funk official audio",
+            "Chic Nile Rodgers official music video",
+            "Kool The Gang funk official music video",
+            "Earth Wind Fire official music video",
+            "Prince funk official music video",
+            "Jamiroquai funk official music video",
+            "Dazz Band Cameo funk official audio",
         ],
     },
-    "cz_hiphop": {
-        "label": "Český hip-hop 90/00",
+    "hiphop": {
+        "label": "Hip hop",
         "queries": [
-            "PSH starý český hip hop official",
-            "Indy Wich český hip hop official",
-            "Chaozz český hip hop official",
-            "PSH Repertoár album český rap",
-            "Indy Wich My 3 album rap",
-            "Chaozz Zprdeleklika album rap",
-            "Prago Union HDP album rap",
-            "Supercrooo Toxic Funk album rap",
-            "Kontrafakt Murdardo album slovenský rap",
-            "Vec Trosky starý slovenský rap",
+            "Dr Dre Snoop Dogg official music video",
+            "2Pac official music video",
+            "Notorious BIG official music video",
+            "A Tribe Called Quest official music video",
+            "Wu Tang Clan official music video",
+            "De La Soul official music video",
+            "Outkast official music video",
+            "Missy Elliott official music video",
+        ],
+    },
+    "house": {
+        "label": "House / Techno",
+        "queries": [
+            "Carl Cox house techno official audio",
+            "Carl Cox house original mix track",
+            "Green Velvet house official audio",
+            "Cajmere house official audio",
+            "Floorplan house official audio",
+            "Nicole Moudaber techno official audio",
+            "Adam Beyer techno official audio",
+            "Fatboy Slim house official music video",
         ],
     },
     "soul_blues": {
@@ -117,12 +128,18 @@ AUTO_DJ_PLAYLISTS = {
         ],
     },
 }
-DEFAULT_AUTO_DJ_PLAYLISTS = ["soul_blues", "cz_funk", "cz_oldies", "cz_hiphop"]
+DEFAULT_AUTO_DJ_PLAYLISTS = ["world_hits", "funk", "hiphop", "house"]
+# Accept saved profiles and requests from already-open tabs during the rollout.
+LEGACY_AUTO_DJ_PLAYLISTS = {"cz_funk": "world_hits", "cz_oldies": "world_hits", "cz_hiphop": "hiphop"}
+LEGACY_AUTO_DJ_LABELS = {
+    "Český funk": "cz_funk", "České oldies": "cz_oldies", "Český hip-hop 90/00": "cz_hiphop",
+}
 DISCOVERY_QUERIES = {
     "soul_blues": "1960s soul blues vintage Motown cover",
-    "cz_funk": "český funk J.A.R. Monkey Business Roman Holý",
-    "cz_oldies": "české oldies Karel Gott Hana Zagorová Marie Rottrová Olympic",
-    "cz_hiphop": "starý český hip hop PSH Indy Wich Chaozz",
+    "world_hits": "Bruno Mars Dua Lipa The Weeknd official music video",
+    "funk": "James Brown Chic Jamiroquai funk official music video",
+    "hiphop": "Dr Dre Snoop Dogg Wu Tang Clan hip hop official music video",
+    "house": "Carl Cox Green Velvet house techno official audio",
 }
 NON_MUSIC_TERMS = (
     "podcast",
@@ -208,7 +225,7 @@ def init_db() -> None:
                 transition_mode TEXT NOT NULL DEFAULT 'scratch' CHECK(transition_mode IN ('none','scratch')),
                 transition_volume INTEGER NOT NULL DEFAULT 55,
                 autodj_enabled INTEGER NOT NULL DEFAULT 1,
-                autodj_playlists TEXT NOT NULL DEFAULT '["cz_funk","cz_oldies","cz_hiphop"]',
+                autodj_playlists TEXT NOT NULL DEFAULT '["world_hits","funk","hiphop","house"]',
                 autodj_custom_queries TEXT NOT NULL DEFAULT '',
                 audio_mode TEXT NOT NULL DEFAULT 'standard' CHECK(audio_mode IN ('standard','bass_guard')),
                 target_lufs INTEGER NOT NULL DEFAULT -16,
@@ -268,7 +285,7 @@ def init_db() -> None:
             "transition_mode": "TEXT NOT NULL DEFAULT 'scratch'",
             "transition_volume": "INTEGER NOT NULL DEFAULT 55",
             "autodj_enabled": "INTEGER NOT NULL DEFAULT 1",
-            "autodj_playlists": "TEXT NOT NULL DEFAULT '[\"cz_funk\",\"cz_oldies\",\"cz_hiphop\"]'",
+            "autodj_playlists": "TEXT NOT NULL DEFAULT '[\"world_hits\",\"funk\",\"hiphop\",\"house\"]'",
             "autodj_custom_queries": "TEXT NOT NULL DEFAULT ''",
         }
         for column, definition in venue_migrations.items():
@@ -323,7 +340,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="PUB Jukebox", version="1.10.2", lifespan=lifespan)
+app = FastAPI(title="PUB Jukebox", version="1.10.3", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
@@ -370,8 +387,9 @@ class VenueSettingsUpdate(BaseModel):
     transition_mode: Literal["none", "scratch"] = "scratch"
     transition_volume: int = Field(default=55, ge=0, le=100)
     autodj_enabled: bool = True
-    autodj_playlists: list[Literal["soul_blues", "cz_funk", "cz_oldies", "cz_hiphop", "karaoke"]] = Field(
-        default_factory=lambda: list(DEFAULT_AUTO_DJ_PLAYLISTS), max_length=5
+    autodj_playlists: list[Literal["world_hits", "funk", "hiphop", "house", "soul_blues", "karaoke",
+                                 "cz_funk", "cz_oldies", "cz_hiphop"]] = Field(
+        default_factory=lambda: list(DEFAULT_AUTO_DJ_PLAYLISTS), max_length=6
     )
     autodj_custom_queries: str = Field(default="", max_length=1000)
     audio_mode: Literal["standard", "bass_guard"] = "standard"
@@ -422,11 +440,17 @@ def normalize_autodj_playlists(value) -> list[str]:
             value = value.split(",")
     if not isinstance(value, list):
         return list(DEFAULT_AUTO_DJ_PLAYLISTS)
+    keys = [str(item).strip() for item in value]
+    legacy_preset = set(LEGACY_AUTO_DJ_PLAYLISTS).issubset(keys)
     result = []
-    for item in value:
-        key = str(item).strip()
-        if key in AUTO_DJ_PLAYLISTS and key not in result:
-            result.append(key)
+    for key in keys:
+        if legacy_preset and key in LEGACY_AUTO_DJ_PLAYLISTS:
+            replacements = DEFAULT_AUTO_DJ_PLAYLISTS
+        else:
+            replacements = [LEGACY_AUTO_DJ_PLAYLISTS.get(key, key)]
+        for replacement in replacements:
+            if replacement in AUTO_DJ_PLAYLISTS and replacement not in result:
+                result.append(replacement)
     return result
 
 
@@ -436,6 +460,7 @@ def clean_autodj_queries(value: str) -> str:
 
 
 def clean_playlist_source(value: str) -> str:
+    value = LEGACY_AUTO_DJ_PLAYLISTS.get(value, value)
     if not value or value in AUTO_DJ_PLAYLISTS:
         return value
     if value.startswith("custom:"):
@@ -445,15 +470,21 @@ def clean_playlist_source(value: str) -> str:
     raise HTTPException(422, "Neplatný zdrojový playlist.")
 
 
-def song_playlist_source(song: dict) -> str:
+def raw_song_playlist_source(song: dict) -> str:
     source = str(song.get("source_playlist") or "")
     if source:
         return source
     # Old AutoDJ rows predate source metadata. A guest's display name is not provenance.
     if song.get("requester_id") == "autodj" or song.get("is_autodj") is True:
         label = str(song.get("requested_by", "")).removeprefix("AutoDJ · ")
-        return next((key for key, playlist in AUTO_DJ_PLAYLISTS.items() if playlist["label"] == label), "")
+        return next((key for key, playlist in AUTO_DJ_PLAYLISTS.items() if playlist["label"] == label),
+                    LEGACY_AUTO_DJ_LABELS.get(label, ""))
     return ""
+
+
+def song_playlist_source(song: dict) -> str:
+    source = raw_song_playlist_source(song)
+    return LEGACY_AUTO_DJ_PLAYLISTS.get(source, source)
 
 
 def client_ip(request: Request) -> str:
@@ -489,6 +520,7 @@ def venue_settings() -> dict:
         result = settings_rpc("get")
         if not isinstance(result, dict):
             raise HTTPException(503, "Profil provozovny není dostupný.")
+        result["autodj_playlists"] = normalize_autodj_playlists(result.get("autodj_playlists"))
         return result
     with connection() as conn:
         conn.execute(
@@ -1125,7 +1157,7 @@ def autodj_program(profile: dict, completed: int, continuation: dict | None = No
         programs.append(("Vlastní mix", f"{query} music official", f"custom:{query}"))
     if not programs:
         return None
-    source = (continuation or {}).get("source_playlist", "")
+    source = song_playlist_source(continuation or {})
     for program in programs:
         if program[2] == source:
             return program
@@ -1669,7 +1701,9 @@ def prepare_autodj(request: Request):
     status = autodj_status()
     program = autodj_program(profile, int(status.get("completed", 0)), status.get("continuation"))
     buffered = status.get("song") or {}
-    replace_song_id = int(buffered.get("id", 0)) if status.get("prepared") and not is_autodj_music_candidate(buffered) else 0
+    replace_buffer = (not is_autodj_music_candidate(buffered)
+                      or raw_song_playlist_source(buffered) in LEGACY_AUTO_DJ_PLAYLISTS)
+    replace_song_id = int(buffered.get("id", 0)) if status.get("prepared") and replace_buffer else 0
     if status.get("prepared") and not replace_song_id and program and song_playlist_source(buffered) == program[2]:
         return {"enabled": True, **status}
     selection = fresh_playlist_songs(profile, status)
@@ -1950,11 +1984,13 @@ def search_videos(
 @app.get("/api/discover")
 def discover_songs(
     request: Request,
-    category: Literal["continue", "popular", "soul_blues", "cz_funk", "cz_oldies", "cz_hiphop"] = Query(default="popular"),
+    category: Literal["continue", "popular", "world_hits", "funk", "hiphop", "house", "soul_blues",
+                      "cz_funk", "cz_oldies", "cz_hiphop"] = Query(default="popular"),
     offset: int = Query(default=0, ge=0, le=1000),
     exclude: str = Query(default="", max_length=2400),
 ):
     require_guest(request)
+    category = LEGACY_AUTO_DJ_PLAYLISTS.get(category, category)
     if category == "continue":
         excluded = {value for value in exclude.split(",") if VIDEO_ID_RE.fullmatch(value)}
         profile = venue_settings()

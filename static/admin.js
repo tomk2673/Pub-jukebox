@@ -207,7 +207,7 @@ function renderVenueSettings() {
   $("transitionVolume").value = state.config.transition_volume ?? 55;
   $("autodjEnabled").checked = state.config.autodj_enabled !== false;
   $("autodjCustomQueries").value = state.config.autodj_custom_queries || "";
-  const playlists = new Set(state.config.autodj_playlists || ["cz_funk", "cz_oldies", "cz_hiphop"]);
+  const playlists = new Set(state.config.autodj_playlists || ["world_hits", "funk", "hiphop", "house"]);
   for (const input of document.querySelectorAll('input[name="autodjPlaylist"]')) input.checked = playlists.has(input.value);
   $("targetLufs").value = state.config.target_lufs ?? -16;
   $("bassStrength").value = state.config.bass_guard_strength ?? 65;

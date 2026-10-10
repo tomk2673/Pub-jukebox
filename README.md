@@ -1,4 +1,16 @@
-# PUB Jukebox 1.10.2
+# PUB Jukebox 1.10.3
+
+## Světový hudební výběr — 10. října 2026
+
+Hosté a AutoDJ mají celosvětové hity, funk, hip hop a house/techno ve směru Carla Coxe.
+České kategorie nahrazují nové seznamy; české skladby zůstávají dostupné přes běžné hledání.
+Retro Soul & Blues i karaoke zůstávají volitelné. Uložený původní český preset se při čtení
+převede na čtyři nové žánry; individuální výběr a vypnutý AutoDJ se zachovají.
+Starý český AutoDJ zásobník se při další přípravě nahradí, volby hostů mají dál přednost.
+
+Před nasazením aplikovat migraci `global_music_categories`, která rozšiřuje povolené
+zdroje playlistů. Původní zdroje přijímá i nadále pro již otevřené starší stránky.
+Po nasazení obnovit administraci i stránku hosta.
 
 ## Obnova automatického přehrávání — 8. října 2026
 
@@ -84,7 +96,7 @@ Webový jukebox pro bar. Host načte QR kód, vyhledá skladbu podle názvu na Y
 - pět syntetizovaných DJ přechodů střídaných bez okamžitého opakování, s nastavitelnou hlasitostí a bez cizích audiosamplů
 - dotykový štít TV přehrávače: zákazník nemůže klip zastavit, otevřít YouTube ani spustit druhou skladbu mimo frontu
 - AutoDJ zásobník pro plynulé pokračování při prázdné frontě; hostovská volba má vždy přednost
-- volitelné AutoDJ playlisty: český funk, české oldies, český hip-hop 90/00, karaoke a vlastní témata provozovny
+- volitelné AutoDJ playlisty: celosvětové hity, funk, hip hop, house/techno (Carl Cox), retro soul/blues, karaoke a vlastní témata provozovny
 - samostatná volba karaoke: originální skladba se zpěvákem a textem ve videu, nikoli instrumentální podklad
 - instalovatelné fullscreen PWA bez lišt pro hosty, administraci i TV na telefonu a počítači
 - TV přehrávač s automatickým pokračováním
