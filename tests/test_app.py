@@ -138,9 +138,12 @@ def test_discovery_ui_has_one_tap_music_lists(tmp_path, monkeypatch):
         page = client.get("/guest")
         script = client.get("/static/guest.js")
         assert "Oblíbené v baru" in page.text
-        assert "Český funk" in page.text
-        assert "Oldies" in page.text
-        assert "Starý hip-hop" in page.text
+        assert "Celosvětové hity" in page.text
+        assert "Funk" in page.text
+        assert "Hip hop" in page.text
+        assert "House / Techno" in page.text
+        assert "Český funk" not in page.text
+        assert "Oldies" not in page.text
         assert "/api/discover?category=" in script.text
         assert 'renderResults(data.items, "discoverResults"' in script.text
 
@@ -407,7 +410,7 @@ def test_guest_mobile_layout_blocks_horizontal_overscroll(tmp_path, monkeypatch)
         assert "overscroll-behavior-x: none" in style.text
         assert "touch-action: pan-y pinch-zoom" in style.text
         assert ".guest-app .results .song-card > .btn" in style.text
-        assert 'pub-jukebox-v12' in worker.text
+        assert 'pub-jukebox-v13' in worker.text
 
 
 def test_all_surfaces_install_fullscreen_on_phone_and_computer(tmp_path, monkeypatch):
@@ -443,7 +446,7 @@ def test_all_surfaces_install_fullscreen_on_phone_and_computer(tmp_path, monkeyp
         assert worker.status_code == 200
         assert worker.headers["service-worker-allowed"] == "/"
         assert "no-cache" in worker.headers["cache-control"]
-        assert 'pub-jukebox-v12' in worker.text
+        assert 'pub-jukebox-v13' in worker.text
         assert "/static/admin.webmanifest" in worker.text
         assert "/static/tv.webmanifest" in worker.text
         assert 'register("/sw.js", { scope: "/" })' in installer.text
@@ -500,7 +503,7 @@ def test_admin_manages_venue_tv_and_audio_profile(tmp_path, monkeypatch):
         assert display["transition_mode"] == "scratch"
         assert display["transition_volume"] == 62
         assert display["autodj_enabled"] is True
-        assert display["autodj_playlists"] == ["cz_funk", "karaoke"]
+        assert display["autodj_playlists"] == ["world_hits", "karaoke"]
         assert "slovenské hity" in display["autodj_custom_queries"]
         assert display["audio_mode"] == "bass_guard"
         assert display["target_lufs"] == -15
@@ -513,7 +516,7 @@ def test_admin_manages_venue_tv_and_audio_profile(tmp_path, monkeypatch):
         assert config["bass_guard_strength"] == 72
         assert config["transition_mode"] == "scratch"
         assert config["transition_volume"] == 62
-        assert config["autodj_playlists"] == ["cz_funk", "karaoke"]
+        assert config["autodj_playlists"] == ["world_hits", "karaoke"]
         assert config["audio_processor"]["connected"] is False
 
         invalid = client.put(
