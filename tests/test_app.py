@@ -312,6 +312,51 @@ def test_admin_controls_player_and_qr(tmp_path, monkeypatch):
         assert "svg" in qr.headers["content-type"]
 
 
+def test_resume_from_fresh_admin_after_volume_and_night_keeps_guest_queue(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        join(client)
+        playing = add(client, VIDEO_A, "Current guest").json()
+        waiting = add(client, VIDEO_B, "Waiting guest").json()
+        login(client)
+        client.post("/api/player/control", json={"action": "pause"}).raise_for_status()
+        client.post("/api/player/control", json={"action": "volume", "value": 67}).raise_for_status()
+        client.post("/api/player/control", json={"action": "night", "value": True}).raise_for_status()
+        before = client.get("/api/player/state").json()
+        assert before["action"] == "night"  # The existing API cannot confirm pause here.
+        with TestClient(jukebox.app) as fresh:
+            assert fresh.post("/api/player/control", json={"action": "resume"}).status_code == 401
+            login(fresh)
+            resumed = fresh.post("/api/player/control", json={"action": "resume"})
+            assert resumed.status_code == 200
+            after = fresh.get("/api/player/state").json()
+            assert after["action"] == "resume"
+            assert after["revision"] == before["revision"] + 1
+            assert after["now_playing"]["id"] == playing["id"]
+            assert after["volume"] == 67 and after["night_mode"] == 1
+            assert [(song["id"], song["status"]) for song in fresh.get("/api/queue").json()] == [
+                (playing["id"], "playing"), (waiting["id"], "queued"),
+            ]
+
+
+def test_disabled_empty_autodj_can_save_genres_before_enabling(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        login(client)
+        profile = {
+            "business_name": "Saved bar", "tv_mode": "menu", "menu_text": "Drink | 125 Kč",
+            "transition_mode": "none", "transition_volume": 31,
+            "autodj_enabled": False, "autodj_playlists": [], "autodj_custom_queries": "",
+            "audio_mode": "bass_guard", "target_lufs": -18,
+            "limiter_ceiling_db": -2, "bass_guard_strength": 67,
+        }
+        assert client.put("/api/admin/display", json=profile).status_code == 200
+        assert client.put("/api/admin/display", json={**profile, "autodj_enabled": True}).status_code == 422
+        for enabled in [False, True]:
+            expected = {**profile, "autodj_enabled": enabled, "autodj_playlists": ["funk"]}
+            assert client.put("/api/admin/display", json=expected).status_code == 200
+            saved = client.get("/api/admin/config").json()
+            assert {key: saved[key] for key in expected} == expected
+
+
 def test_admin_can_search_and_add_without_switching_to_guest_page(tmp_path, monkeypatch):
     monkeypatch.setattr(
         jukebox,

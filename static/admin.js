@@ -2,7 +2,7 @@ const $ = (id) => document.getElementById(id);
 const state = {
   config: null, player: null, queue: [], volumeTimer: null, searchBusy: false,
   connected: false, playbackBusy: false, quickSaving: false, settingsSaving: false,
-  venueDirty: false, queueKey: null, paused: false, commandVersion: 0,
+  venueDirty: false, queueKey: null, paused: null, commandVersion: 0,
 };
 const venueFields = [
   "business_name", "tv_mode", "menu_text", "transition_mode", "transition_volume",
@@ -256,21 +256,28 @@ function renderPlayer() {
   $("nowTitle").textContent = song?.title || "Nic nehraje";
   $("nowArtist").textContent = song ? `${song.artist || "YouTube"}${isAutoDj(song) ? " · Automat" : ""}` : "Přidej skladbu nebo spusť automat.";
   if (state.player) {
-    // Volume/night commands replace the last command on the existing server.
-    // Retain a known pause in this tab, including after a reload, until load/resume.
-    if (state.pauseSongId === undefined) {
-      try {
-        const cached = JSON.parse(sessionStorage.getItem("jukebox-admin-pause"));
-        if (cached?.songId === song?.id) state.paused = Boolean(cached.paused);
-      } catch (_) { /* Storage may be unavailable in private browsing. */ }
-    }
     if (state.pauseSongId !== song?.id || state.pauseRevision !== state.player.revision) {
-      if (state.pauseSongId !== undefined && state.pauseSongId !== song?.id) state.paused = false;
-      if (state.player.action === "pause") state.paused = true;
-      if (["resume", "load"].includes(state.player.action)) state.paused = false;
+      // Volume/night replace the server command. A gap may hide a playback
+      // command from another tab, so never infer "playing" from missing evidence.
+      const consecutive = state.pauseSongId === song?.id && state.player.revision === state.pauseRevision + 1;
+      let paused = consecutive ? state.paused : null;
+      if (state.pauseSongId === undefined) {
+        try {
+          const cached = JSON.parse(sessionStorage.getItem("jukebox-admin-pause"));
+          if (song && cached?.songId === song.id && cached.revision === state.player.revision
+              && typeof cached.paused === "boolean") paused = cached.paused;
+        } catch (_) { /* Storage may be unavailable in private browsing. */ }
+      }
+      if (state.player.action === "pause") paused = true;
+      if (["resume", "load"].includes(state.player.action)) paused = false;
+      state.paused = paused;
       state.pauseSongId = song?.id;
       state.pauseRevision = state.player.revision;
-      try { sessionStorage.setItem("jukebox-admin-pause", JSON.stringify({ songId: song?.id, paused: state.paused })); } catch (_) {}
+      try {
+        sessionStorage.setItem("jukebox-admin-pause", JSON.stringify({
+          songId: song?.id, revision: state.player.revision, paused,
+        }));
+      } catch (_) {}
     }
     if (state.volumePending == null && !state.volumeSending && !state.volumeDragging) {
       $("volume").value = state.player.volume;
@@ -279,10 +286,15 @@ function renderPlayer() {
     $("nightButton").textContent = state.player.night_mode ? `Noční limit ${state.config?.night_volume ?? 55} % ✓` : "Noční limit";
     $("nightButton").setAttribute("aria-pressed", String(Boolean(state.player.night_mode)));
   }
-  $("playbackLabel").textContent = song ? (state.paused ? "POZASTAVENO" : "PRÁVĚ HRAJE") : "PŘEHRÁVAČ";
+  $("playbackLabel").textContent = !song || state.paused === null ? "PŘEHRÁVAČ" : state.paused ? "POZASTAVENO" : "PRÁVĚ HRAJE";
   $("playToggle").textContent = !song ? "▶ Spustit" : state.paused ? "▶ Pokračovat" : "Ⅱ Pauza";
+  // Both commands remain reachable when a fresh tab cannot know the pause state.
+  const pauseUnknown = Boolean(song) && state.paused === null;
+  $("resumeButton").classList.toggle("hidden", !pauseUnknown);
+  $("playbackActions").classList.toggle("pause-unknown", pauseUnknown);
   const unavailable = !state.connected || state.playbackBusy;
   $("playToggle").disabled = unavailable;
+  $("resumeButton").disabled = unavailable || !song;
   $("nextButton").disabled = unavailable || (!song && !state.queue.some((item) => item.status === "queued"));
   $("nightButton").disabled = unavailable;
   $("volume").disabled = !state.connected;
@@ -316,10 +328,10 @@ function renderVenueSettings() {
 
 function renderAutoDjValues() {
   const enabled = $("autodjEnabled").checked;
-  $("autodjControls").classList.toggle("disabled-controls", !enabled);
   const busy = state.quickSaving || state.settingsSaving || state.audioSaving || !state.connected;
-  for (const input of $("autodjControls").querySelectorAll("input")) input.disabled = Boolean(!enabled || busy);
-  $("autodjSummary").textContent = enabled ? "Naváže posledním playlistem. Hosté mají přednost." : "Vypnutý. Hraje jen připravená fronta.";
+  $("autodjControls").classList.toggle("disabled-controls", Boolean(busy));
+  for (const input of $("autodjControls").querySelectorAll("input")) input.disabled = Boolean(busy);
+  $("autodjSummary").textContent = enabled ? "Naváže posledním playlistem. Hosté mají přednost." : "Vypnutý. Styly můžeš vybrat před zapnutím.";
 }
 
 function renderAutoDjSettings() {
@@ -645,7 +657,6 @@ async function control(action, value = null) {
     const player = await api("/api/player/control", { method: "POST", body: JSON.stringify({ action, value }) });
     // /control returns command state without now_playing in SQLite.
     if (player.revision >= (state.player?.revision || 0)) state.player = { ...state.player, ...player };
-    if (action === "pause" || action === "resume") state.paused = action === "pause";
     renderPlayer();
   }, message);
 }
@@ -679,6 +690,8 @@ async function flushVolume() {
         method: "POST", body: JSON.stringify({ action: "volume", value }),
       });
       if (player.revision >= (state.player?.revision || 0)) state.player = { ...state.player, ...player };
+      // Observe every acknowledged slider revision before sending the next one.
+      renderPlayer();
     }
   } catch (error) {
     state.volumePending = null;
@@ -719,6 +732,7 @@ function wireEvents() {
   for (const id of ["targetLufs", "bassStrength", "limiterCeiling"]) $(id).addEventListener("input", () => { renderAudioValues(); markAudioDirty(); });
   $("saveAudioButton").addEventListener("click", saveAudioSettings);
   $("playToggle").addEventListener("click", togglePlayback);
+  $("resumeButton").addEventListener("click", () => control("resume"));
   $("nextButton").addEventListener("click", () => playerAction("/api/player/next", "Přeskakuji na další skladbu."));
   $("nightButton").addEventListener("click", () => control("night", !Boolean(state.player?.night_mode)));
   $("volume").addEventListener("input", (event) => {

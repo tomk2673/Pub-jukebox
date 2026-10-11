@@ -39,7 +39,7 @@ try {
   },value);
   await playable();
   assert.equal(await page.locator('#settingsPanel').isVisible(),false);
-  assert.equal(await page.locator('.playback-actions button').count(),2);
+  assert.equal(await page.locator('.playback-actions button').count(),3);
   assert.equal(await page.locator('#nowTitle').innerText(),'Test Funk');
   assert.equal(await page.locator('#playToggle').innerText(),'Ⅱ Pauza');
   assert.equal(await page.locator('#playToggle').evaluate(el=>el.getBoundingClientRect().bottom<innerHeight),true,'player is immediately reachable');
@@ -64,6 +64,30 @@ try {
   await page.locator('#nightButton').click();
   await playable();
   assert.equal(await page.locator('#nightButton').getAttribute('aria-pressed'),'true');
+  await page.reload();
+  await playable();
+  assert.match(await page.locator('#playToggle').innerText(),/Pokračovat/,'same-revision pause cache survives reload after night');
+  // A separately opened tab has no pause cache after volume/night overwrite pause.
+  const fresh = await context.newPage();
+  fresh.on('pageerror', error => errors.push(error.message));
+  await fresh.route('https://i.ytimg.com/**', route => route.abort());
+  await fresh.goto(`${base}/admin`);
+  await fresh.locator('#playToggle:not([disabled])').waitFor();
+  assert.equal(await fresh.evaluate(()=>state.paused),null);
+  await fresh.locator('#resumeButton').waitFor({state:'visible'});
+  for (const width of [320,390,768,1440]) {
+    await fresh.setViewportSize({width,height:900});
+    assert.equal(await fresh.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`unknown pause: no overflow at ${width}px`);
+  }
+  const currentBeforeResume = (await queue()).find(song=>song.status==='playing').id;
+  await fresh.locator('#resumeButton').click();
+  await fresh.locator('#playToggle:not([disabled])').waitFor();
+  assert.equal((await (await context.request.get(`${base}/api/player/state`)).json()).action,'resume');
+  assert.equal((await queue()).find(song=>song.status==='playing').id,currentBeforeResume,'resume keeps the current guest');
+  await fresh.locator('#resumeButton').waitFor({state:'hidden'});
+  await fresh.locator('#playToggle').click();
+  await fresh.locator('#playToggle:not([disabled])').waitFor();
+  await fresh.close();
   await page.reload();
   await playable();
   assert.match(await page.locator('#playToggle').innerText(),/Pokračovat/,'known pause survives reload in this tab');
@@ -163,9 +187,41 @@ try {
   await page.locator('#autodjEnabled').uncheck();
   await savedAuto();
   assert.equal((await config()).autodj_enabled,false);
-  assert.equal(await page.locator('input[name="autodjPlaylist"][value="funk"]').isDisabled(),true);
+  assert.equal(await page.locator('input[name="autodjPlaylist"][value="funk"]').isDisabled(),false);
+  // A disabled, empty saved profile must recover through the normal genre picker.
+  await page.locator('input[name="autodjPlaylist"][value="soul_blues"]').uncheck();
+  await savedAuto();
+  assert.deepEqual((await config()).autodj_playlists,[]);
+  await page.reload();
+  await playable();
+  assert.equal(await page.locator('#autodjEnabled').isChecked(),false);
   await page.locator('#autodjEnabled').check();
   await savedAuto();
+  assert.equal(await page.locator('#autodjEnabled').isChecked(),false,'empty enable rolls back but leaves genres reachable');
+  const beforeGenres = await config();
+  await page.locator('#settingsTab').click();
+  await page.locator('#businessName').fill('Další neuložený název');
+  await page.locator('#musicTab').click();
+  await page.route('**/api/admin/display',route=>route.fulfill({status:503,json:{detail:'Testovací výpadek'}}));
+  await page.locator('input[name="autodjPlaylist"][value="soul_blues"]').check();
+  await savedAuto();
+  assert.equal(await page.locator('input[name="autodjPlaylist"][value="soul_blues"]').isChecked(),false);
+  assert.equal(await page.locator('input[name="autodjPlaylist"][value="soul_blues"]').isDisabled(),false);
+  await page.unroute('**/api/admin/display');
+  await page.locator('input[name="autodjPlaylist"][value="soul_blues"]').check();
+  await savedAuto();
+  stored=await config();
+  assert.equal(stored.autodj_enabled,false,'choosing a genre does not start AutoDJ');
+  assert.deepEqual(stored.autodj_playlists,['soul_blues']);
+  for (const key of ['business_name','menu_text','tv_mode','audio_mode','target_lufs','limiter_ceiling_db','bass_guard_strength','transition_mode','transition_volume','autodj_custom_queries']) {
+    assert.deepEqual(stored[key],beforeGenres[key],`off-state genre save preserves ${key}`);
+  }
+  await page.locator('#settingsTab').click();
+  assert.equal(await page.locator('#businessName').inputValue(),'Další neuložený název');
+  await page.locator('#musicTab').click();
+  await page.locator('#autodjEnabled').check();
+  await savedAuto();
+  assert.equal((await config()).autodj_enabled,true);
   await context.request.post(`${base}/api/player/next`);
   await page.evaluate(()=>loadAll(true));
   assert.match(await page.locator('#playToggle').innerText(),/Spustit/);
@@ -212,7 +268,7 @@ try {
   await page.locator('#loginView').waitFor();
   assert.equal((await (await context.request.get(`${base}/api/me`)).json()).admin,false);
   assert.deepEqual(errors,[]);
-  console.log('Admin Chromium: login, unified player, volume/night/pause, search, queue, double taps, stable focus, immediate AutoDJ, draft isolation, audio save, rollback, network recovery, keyboard tabs, 320/390/768/1440px and session expiry passed.');
+  console.log('Admin Chromium: new-tab resume after volume/night, reload, off/empty AutoDJ recovery, draft isolation and rollback, login, unified player, search, queue, double taps, focus, audio, network recovery, keyboard tabs, 320/390/768/1440px and session expiry passed.');
 } finally {
   await browser?.close();
   server.kill('SIGTERM');
