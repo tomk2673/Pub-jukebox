@@ -15,8 +15,13 @@ Obnovení nezměněné fronty zachová zaměření tlačítek a rozpracovanou hl
 
 Změna používá stávající API a nevyžaduje novou databázovou migraci.
 Po nasazení obnov administraci. Tlačítko pauzy sleduje poslední povel přehrávače
-a v téže kartě si známou pauzu pamatuje i po změně hlasitosti a obnovení stránky;
-nejde o potvrzení skutečného zvuku z TV.
+a v téže kartě si známou pauzu pamatuje i po změně hlasitosti a obnovení stránky,
+pokud odpovídá aktuální revizi. Nová karta, nedostupné úložiště nebo vynechané
+povely mohou znamenat neznámý stav: tehdy se zobrazí pauza i přímé **Pokračovat**.
+Obnova posílá stávající příkaz `resume` na TV a nemění skladbu ani frontu.
+Nejde o potvrzení skutečného zvuku z TV. Výběr stylů zůstává dostupný i při
+vypnutém automatu; nejdřív lze uložit styly, potom jej zapnout. Prázdný výběr
+bez vlastního tématu se při zapnutí dál odmítá a neúspěšný zápis se vrátí zpět.
 
 ## Světový hudební výběr — 10. října 2026
 
@@ -207,6 +212,7 @@ python -m pytest -q
 node tests/test_bass_guard_dsp.mjs
 node tests/test_guest_skip_ui.mjs
 node tests/test_tv_autostart.mjs
+node tests/test_admin_playback_ui.mjs
 npm ci --prefix tests/sql
 npm test --prefix tests/sql
 ```
@@ -215,6 +221,12 @@ Prohlížečový test TV: `node tests/test_tv_autostart_browser.mjs` (Playwright
 Ověřuje skutečné lokální API/frontu a přechody s testovacím YouTube přehrávačem,
 včetně ztraceného konce videa, ruční pauzy a povolení druhého přehrávače kliknutím.
 Neprovádí změny v produkční frontě ani neověřuje skutečný zvuk v baru.
+
+Administraci ověřuje `node tests/test_admin_browser.mjs`: obnova z nové karty po
+změně hlasitosti/nočního limitu, obnovení stránky, výběr stylů při vypnutém a
+prázdném AutoDJ, izolace rozpracovaných nastavení a návrat při výpadku zápisu.
+TV test navíc ověřuje pauzu a pokračování ze skutečné administrace s blokovaným
+úložištěm. Oba používají dočasnou SQLite databázi; YouTube je v TV testu náhrada.
 
 ## Základ pro prodej dalším provozovnám
 

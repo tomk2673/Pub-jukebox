@@ -26,6 +26,8 @@
 .night-toggle[aria-pressed="true"] { border-color: var(--cyan); color: var(--cyan); }
 .playback-actions { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 10px; max-width: 620px; }
 .playback-actions .btn { min-height: 56px; font-size: 17px; }
+.playback-actions.pause-unknown { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.playback-actions.pause-unknown .btn { font-size: 14px; padding-inline: 6px; }
 .volume-row { max-width: 620px; margin-top: 18px; font-size: 13px; }
 .volume-row output { width: 44px; text-align: right; font-weight: 800; font-variant-numeric: tabular-nums; }
 .admin-app input[type="range"] { min-height: 44px; }

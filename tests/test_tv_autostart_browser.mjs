@@ -60,12 +60,34 @@ try {
   await page.waitForFunction(()=>playbackPaused && window.fixturePlayers[activeDeck].state===2);
   await context.request.post(`${origin}/api/player/control`,{data:{action:"volume",value:70}});
   await page.waitForFunction(()=>effectiveVolume===70 && playbackPaused);
+  await context.request.post(`${origin}/api/player/control`,{data:{action:"night",value:true}});
+  await page.waitForFunction(()=>effectiveVolume===55 && playbackPaused);
   await page.evaluate(()=>{window.fixturePlayers[activeDeck].state=0;});
   await page.waitForTimeout(1000);
   queue=await (await context.request.get(`${origin}/api/queue`)).json();
   assert.equal(queue.find(song=>song.status==="playing").id,firstGuest.id,"manual pause preserves song");
-  await context.request.post(`${origin}/api/player/control`,{data:{action:"resume"}});
+  const admin=await context.newPage();
+  admin.on("pageerror",error=>errors.push(error.message));
+  await admin.route("https://i.ytimg.com/**",route=>route.abort());
+  // Storage is deliberately unavailable: playback controls must still work.
+  await admin.addInitScript(()=>{
+    Object.defineProperty(window,"sessionStorage",{get(){throw new Error("Storage blocked");}});
+  });
+  await admin.goto(`${origin}/admin`);
+  await admin.locator("#resumeButton:not([disabled])").waitFor({state:"visible"});
+  await admin.reload();
+  await admin.locator("#resumeButton:not([disabled])").waitFor({state:"visible"});
+  await admin.locator("#resumeButton").click();
   await page.waitForFunction(()=>!playbackPaused && window.fixturePlayers[activeDeck].state===1);
+  queue=await (await context.request.get(`${origin}/api/queue`)).json();
+  assert.equal(queue.find(song=>song.status==="playing").id,firstGuest.id,"new admin tab resumes the same guest on TV");
+  await admin.locator("#playToggle:not([disabled])").waitFor();
+  await admin.locator("#playToggle").click();
+  await page.waitForFunction(()=>playbackPaused && window.fixturePlayers[activeDeck].state===2);
+  await admin.locator("#playToggle:not([disabled])").waitFor();
+  await admin.locator("#playToggle").click();
+  await page.waitForFunction(()=>!playbackPaused && window.fixturePlayers[activeDeck].state===1);
+  await admin.close();
 
   const secondGuest=await (await context.request.post(`${origin}/api/queue`,{data:{
     video_id:"track999992",title:"Second guest after browser activation",source_playlist:"funk",
@@ -85,5 +107,5 @@ try {
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   }
   assert.deepEqual(errors,[]);
-  console.log("Chromium TV: cached API startup, lost ENDED event, real queue/transition and guest priority, manual pause across volume change, incoming autoplay activation and 320/390/768/1440px passed. YouTube player is a local fixture.");
+  console.log("Chromium TV: fresh/reloaded admin with blocked storage resumes the same guest after volume/night; pause/resume, cached API startup, lost ENDED event, queue/transition and guest priority, autoplay activation and 320/390/768/1440px passed. YouTube player is a local fixture.");
 } finally {await browser?.close();server.kill("SIGTERM");}
