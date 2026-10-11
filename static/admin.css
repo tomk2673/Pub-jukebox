@@ -1,0 +1,153 @@
+/* Admin only: guest and TV screens keep their own layout. */
+.admin-app .shell { width: min(1180px, 100%); padding-bottom: max(32px, env(safe-area-inset-bottom)); }
+.admin-app .topbar { margin-bottom: 18px; }
+.admin-app .brand, .admin-app .brand > div:last-child { min-width: 0; }
+.admin-app .brand-name { letter-spacing: .015em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-app .tv-link { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; min-height: 44px; padding: 0 14px; font-size: 13px; text-decoration: none; }
+.admin-app .panel { padding: 22px; border-radius: 20px; box-shadow: none; }
+.admin-app h2 { margin-bottom: 14px; font-size: 19px; letter-spacing: -.025em; }
+.admin-app button, .admin-app summary, .admin-app label { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+.admin-app .btn { min-height: 48px; }
+.admin-app .status:empty { display: none; }
+.admin-app :focus-visible { outline: 2px solid var(--cyan); outline-offset: 4px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+.admin-nav { position: sticky; top: 0; z-index: 5; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 18px; padding: 5px; border: 1px solid var(--line); border-radius: 16px; background: #11151c; }
+.admin-nav button { min-height: 44px; border: 0; border-radius: 11px; background: transparent; color: var(--muted); font-size: 15px; font-weight: 800; cursor: pointer; }
+.admin-nav [aria-selected="true"] { color: var(--text); background: #282e38; }
+.unsaved-dot { color: var(--amber); padding-left: 4px; }
+.connection-notice { padding: 12px 15px; margin: 0 0 16px; border: 1px solid var(--line); border-radius: 14px; }
+
+.player-panel { position: relative; background: linear-gradient(120deg, rgba(255,186,58,.07), transparent 70%), var(--panel); }
+.player-heading { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
+.admin-app #nowTitle { font-size: clamp(23px, 3vw, 34px); line-height: 1.15; letter-spacing: -.035em; margin: 0 0 7px; overflow-wrap: anywhere; }
+.admin-app #nowArtist { font-size: 14px; margin-bottom: 20px; }
+.night-toggle.btn { min-height: 44px; padding: 0 12px; font-size: 12px; }
+.night-toggle[aria-pressed="true"] { border-color: var(--cyan); color: var(--cyan); }
+.playback-actions { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 10px; max-width: 620px; }
+.playback-actions .btn { min-height: 56px; font-size: 17px; }
+.volume-row { max-width: 620px; margin-top: 18px; font-size: 13px; }
+.volume-row output { width: 44px; text-align: right; font-weight: 800; font-variant-numeric: tabular-nums; }
+.admin-app input[type="range"] { min-height: 44px; }
+
+.music-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 24px; margin-top: 22px; align-items: start; }
+.music-grid > *, .settings-layout > * { min-width: 0; }
+.music-tools { display: grid; gap: 18px; }
+.admin-app .section-head { margin: 0 0 14px; align-items: center; }
+.admin-app .section-head h2 { margin: 0; }
+.admin-app #queue { display: grid; gap: 8px; }
+.admin-app #queue .song-card { grid-template-columns: 30px minmax(0,1fr) auto; gap: 10px; padding: 12px; }
+.admin-app #queue .position { width: 30px; height: 34px; border-radius: 8px; background: transparent; color: var(--amber); }
+.admin-app #queue .song-actions { grid-column: auto; flex-wrap: nowrap; gap: 6px; }
+.admin-app #queue .song-actions .btn { flex: none; white-space: nowrap; }
+.admin-app #queue .btn { min-height: 44px; padding: 0 11px; font-size: 12px; }
+.admin-app #queue .remove-song { width: 44px; padding: 0; font-size: 22px; }
+.admin-app #queue .automatic-song { border-style: dashed; }
+.admin-app #queue .automatic-song .position { color: var(--cyan); font-size: 10px; }
+.admin-app #queue .song-title { font-size: 14px; white-space: normal; overflow-wrap: anywhere; }
+.admin-app #queue .song-meta { font-size: 11px; }
+
+.admin-app .search-panel { margin-bottom: 0; }
+.admin-app .search-row { grid-template-columns: minmax(0,1fr) auto; gap: 8px; }
+.admin-app .search-row input { min-height: 50px; min-width: 0; padding: 0 12px; font-size: 16px; }
+.admin-app .search-row .btn { min-height: 50px; padding: 0 14px; font-size: 13px; }
+.search-feedback { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.search-feedback .status { font-size: 12px; }
+.text-button { min-height: 44px; padding: 8px 0 0; border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 12px; }
+.admin-app .admin-search-results { max-height: 450px; }
+.admin-app .admin-search-results:empty { display: none; }
+.admin-app .admin-search-results .song-card { grid-template-columns: 48px minmax(0,1fr) auto; gap: 8px; padding: 8px; }
+.admin-app .admin-search-results .thumb { width: 48px; height: 36px; border-radius: 7px; }
+.admin-app .admin-search-results .song-card > .btn { grid-column: auto; width: auto; min-height: 44px; padding: 0 12px; font-size: 12px; }
+.admin-app .admin-search-results .song-title { white-space: normal; font-size: 13px; overflow-wrap: anywhere; }
+.admin-app .admin-search-results .song-meta { font-size: 11px; }
+
+.automatic-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.automatic-heading h2 { margin: 0 0 5px; }
+.automatic-heading p { margin: 0; line-height: 1.45; }
+.toggle-switch { position: relative; flex-shrink: 0; display: grid; place-items: center; min-width: 56px; min-height: 48px; cursor: pointer; }
+.toggle-switch input { position: absolute; width: 100%; height: 100%; min-height: 0; margin: 0; opacity: 0; cursor: pointer; }
+.toggle-switch > span { width: 50px; height: 30px; padding: 4px; border-radius: 20px; background: #434b58; pointer-events: none; }
+.toggle-switch > span::before { content: ""; display: block; width: 22px; height: 22px; border-radius: 50%; background: white; transition: transform .15s; }
+.toggle-switch input:checked + span { background: var(--amber); }
+.toggle-switch input:checked + span::before { transform: translateX(20px); }
+.toggle-switch input:focus-visible + span { outline: 2px solid var(--cyan); outline-offset: 4px; }
+.toggle-switch input:disabled + span { opacity: .5; }
+.genre-label { margin: 16px 0 8px; }
+.genre-picker { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; }
+.genre-picker label { position: relative; cursor: pointer; }
+.genre-picker input { position: absolute; width: 100%; height: 100%; margin: 0; opacity: 0; min-height: 0; cursor: pointer; }
+.genre-picker span { display: flex; align-items: center; justify-content: center; min-height: 46px; padding: 8px; border: 1px solid var(--line); border-radius: 11px; color: var(--muted); background: rgba(255,255,255,.035); font-size: 13px; text-align: center; pointer-events: none; }
+.genre-picker input:checked + span { border-color: rgba(255,186,58,.45); color: var(--amber); background: rgba(255,186,58,.08); }
+.genre-picker input:focus-visible + span { outline: 2px solid var(--cyan); outline-offset: 3px; }
+.disabled-controls { opacity: .45; }
+.admin-app #autodjStatus { font-size: 12px; }
+
+.settings-layout { display: grid; grid-template-columns: minmax(0,1fr) 310px; gap: 20px; align-items: start; }
+.settings-side { display: grid; gap: 18px; }
+.admin-app .settings-panel { margin: 0; }
+.admin-app fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.settings-group { padding: 16px 0; border-bottom: 1px solid var(--line); }
+.settings-group > summary { min-height: 44px; display: flex; align-items: center; gap: 10px; justify-content: space-between; list-style: none; font-size: 15px; font-weight: 800; cursor: pointer; }
+.settings-group > summary::-webkit-details-marker { display: none; }
+.settings-group > summary::after { content: "+"; color: var(--muted); font-size: 22px; font-weight: 400; }
+.settings-group[open] > summary::after { content: "−"; }
+.settings-group .field-label { margin-top: 16px; }
+.admin-app .mode-picker { grid-template-columns: repeat(3,minmax(0,1fr)); }
+.admin-app .audio-picker { grid-template-columns: repeat(2,minmax(0,1fr)); }
+.admin-app .mode-option input:focus-visible + span { outline: 2px solid var(--cyan); outline-offset: 3px; }
+.admin-app .mode-option span { min-height: 76px; padding: 11px; }
+.admin-app .audio-controls { grid-template-columns: 1fr; }
+.audio-save { margin-top: 14px; width: 100%; }
+.admin-app .install-guide { margin-top: 15px; }
+.admin-app .install-guide p:last-child { margin-bottom: 0; }
+.save-bar { position: sticky; bottom: 12px; display: flex; align-items: center; gap: 15px; justify-content: space-between; padding: 14px 0 0; background: #171b22; }
+.save-bar .status { margin: 0; font-size: 12px; }
+.save-bar .btn { flex-shrink: 0; }
+.admin-app .qr { width: min(210px,100%); }
+.guest-access > .btn { width: 100%; margin-top: 14px; }
+.network-settings { border: 0; padding-bottom: 0; }
+.network-settings strong { display: block; margin: 10px 0; font-size: 14px; }
+.network-settings p { overflow-wrap: anywhere; line-height: 1.5; }
+.network-settings .btn { flex: 1; }
+.application-settings { display: grid; gap: 12px; }
+.application-settings h2, .application-settings p { margin: 0; }
+.admin-app .login-card h1 { font-size: 36px; }
+
+@media (max-width: 780px) {
+  .admin-app .shell { padding: max(14px, env(safe-area-inset-top)) 13px max(26px, env(safe-area-inset-bottom)); }
+  .admin-app .topbar { gap: 10px; }
+  .admin-app .brand { gap: 8px; }
+  .admin-app .brand-mark { width: 38px; height: 38px; border-radius: 12px; font-size: 18px; }
+  .admin-app .eyebrow { font-size: 9px; letter-spacing: .09em; }
+  .admin-app .brand-name { font-size: 14px; }
+  .admin-app .tv-link { padding: 0 10px; font-size: 11px; }
+  .admin-app .panel { padding: 17px; }
+  .admin-nav { margin-bottom: 14px; }
+  .music-grid, .settings-layout { grid-template-columns: 1fr; gap: 18px; }
+  .music-tools { display: contents; }
+  .music-grid .search-panel { grid-row: 1; }
+  .music-grid .queue-section { grid-row: 2; }
+  .music-grid .automatic-panel { grid-row: 3; }
+  .music-grid { margin-top: 18px; }
+  .admin-app #nowArtist { margin-bottom: 14px; }
+  .player-heading { margin-bottom: 8px; }
+  .volume-row { margin-top: 10px; }
+  .genre-picker { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .genre-picker span { font-size: 11px; padding: 7px 4px; }
+  .settings-group > summary { flex-wrap: wrap; }
+  .settings-group .processor-state { font-size: 8px; letter-spacing: .04em; }
+  .save-bar { bottom: env(safe-area-inset-bottom); flex-direction: column; align-items: stretch; padding-bottom: 5px; }
+}
+@media (max-width: 370px) {
+  .admin-app .brand-mark { display: none; }
+  .admin-app #queue .song-card { grid-template-columns: 24px minmax(0,1fr); }
+  .admin-app #queue .song-actions { grid-column: 2; justify-content: flex-start; }
+  .admin-app #queue .song-actions .btn { flex: none; }
+  .admin-app .admin-search-results .song-card { grid-template-columns: 40px minmax(0,1fr); }
+  .admin-app .admin-search-results .song-card > .btn { grid-column: 2; width: 100%; }
+  .admin-app .mode-picker { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toggle-switch > span::before { transition: none; }
+}

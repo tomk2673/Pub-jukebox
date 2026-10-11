@@ -55,14 +55,18 @@ try {
   admin.on('pageerror', error => errors.push(error.message));
   await admin.goto('http://127.0.0.1:8769/admin');
   await admin.locator('#adminView').waitFor();
+  await admin.locator('#autodjEnabled:not([disabled])').waitFor();
   assert.equal(await admin.locator('input[name="autodjPlaylist"]').count(), 6);
   assert.equal(await admin.locator('input[name="autodjPlaylist"]:checked').count(), 4);
   await admin.locator('input[name="autodjPlaylist"][value="soul_blues"]').check();
   await admin.locator('input[name="autodjPlaylist"][value="karaoke"]').check();
+  await admin.locator('#autodjEnabled:not([disabled])').waitFor();
+  await admin.locator('#settingsTab').click();
   await admin.locator('#displayForm button[type="submit"]').click();
   await admin.locator('#displayStatus').filter({hasText:'Uloženo.'}).waitFor();
   await admin.reload();
   await admin.locator('#adminView').waitFor();
+  await admin.locator('#autodjEnabled:not([disabled])').waitFor();
   assert.equal(await admin.locator('input[name="autodjPlaylist"]:checked').count(), 6, 'all optional genres survive save and reload');
   for (const width of [320,390,768,1440]) {
     await page.setViewportSize({width,height:900});

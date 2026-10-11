@@ -1,5 +1,23 @@
 # PUB Jukebox 1.10.3
 
+## Jednodušší administrace — 11. října 2026
+
+Admin začíná přehrávačem. Jedno tlačítko střídá spuštění, pauzu a pokračování;
+vedle něj je další skladba, hlasitost a noční limit. Záložka **Hudba** obsahuje
+frontu, hledání a automat. Zapnutí automatu a výběr stylů se ukládají okamžitě.
+Na telefonu je hledání pod přehrávačem, na širším displeji vedle fronty.
+
+Záložka **Nastavení** sdružuje TV a podnik, přechody, vlastní hudební témata,
+zvuk, QR, Wi‑Fi a instalaci aplikace. Rozpracované nastavení přežije přepnutí
+záložky i změnu automatu. TV a zvuk potvrdíš tlačítkem **Uložit nastavení**;
+samostatné použití zvuku na PC a potvrzení Bass Guardu zůstávají dostupné.
+Obnovení nezměněné fronty zachová zaměření tlačítek a rozpracovanou hlasitost.
+
+Změna používá stávající API a nevyžaduje novou databázovou migraci.
+Po nasazení obnov administraci. Tlačítko pauzy sleduje poslední povel přehrávače
+a v téže kartě si známou pauzu pamatuje i po změně hlasitosti a obnovení stránky;
+nejde o potvrzení skutečného zvuku z TV.
+
 ## Světový hudební výběr — 10. října 2026
 
 Hosté a AutoDJ mají celosvětové hity, funk, hip hop a house/techno ve směru Carla Coxe.

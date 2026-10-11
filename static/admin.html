@@ -10,22 +10,24 @@
   <link rel="manifest" href="/static/admin.webmanifest">
   <link rel="apple-touch-icon" href="/static/icon-180.png">
   <link rel="stylesheet" href="/static/common.css">
-  <title>Správa · PUB Jukebox</title>
+  <link rel="stylesheet" href="/static/admin.css">
+  <title>Ovládání · PUB Jukebox</title>
 </head>
-<body>
+<body class="admin-app">
   <section class="login-shell" id="loginView">
     <div class="panel login-card">
-      <div class="brand-mark">▶</div>
+      <div class="brand-mark" aria-hidden="true">▶</div>
       <div class="eyebrow">OBSLUHA</div>
       <h1>Ovládání jukeboxu</h1>
-      <p class="muted">Zadej PIN. Přihlášení zůstane aktivní 12 hodin.</p>
+      <p class="muted">Zadej PIN. Přihlášení platí 12 hodin.</p>
       <form id="loginForm">
+        <label class="sr-only" for="pin">Admin PIN</label>
         <input id="pin" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Admin PIN" required>
         <button class="btn" type="submit">Odemknout</button>
       </form>
       <div class="status" id="loginStatus" role="status"></div>
       <div class="pwa-install hidden" data-install-panel>
-        <button class="btn secondary compact" type="button" data-install-app>Nainstalovat administraci bez lišty</button>
+        <button class="btn secondary" type="button" data-install-app>Přidat na plochu</button>
         <p class="small muted hidden" data-install-note></p>
       </div>
     </div>
@@ -34,201 +36,179 @@
   <main class="shell hidden" id="adminView">
     <header class="topbar">
       <div class="brand">
-        <div class="brand-mark">▶</div>
+        <div class="brand-mark" aria-hidden="true">▶</div>
         <div>
-          <div class="eyebrow">ADMIN</div>
+          <div class="eyebrow">JUKEBOX · OBSLUHA</div>
           <div class="brand-name" id="brandName">PUB JUKEBOX</div>
         </div>
       </div>
-      <div class="controls">
-        <button class="btn secondary compact hidden" type="button" data-install-app>Nainstalovat bez lišty</button>
-        <button class="btn secondary compact" id="logoutButton" type="button">Odhlásit</button>
-      </div>
+      <a class="btn secondary tv-link" href="/tv" target="_blank" rel="noopener">Otevřít TV ↗</a>
     </header>
-    <div class="status hidden" data-install-note></div>
+    <nav class="admin-nav" role="tablist" aria-label="Ovládání jukeboxu">
+      <button id="musicTab" type="button" role="tab" aria-controls="musicPanel" aria-selected="true">Hudba</button>
+      <button id="settingsTab" type="button" role="tab" aria-controls="settingsPanel" aria-selected="false" tabindex="-1">Nastavení <span class="hidden unsaved-dot" id="unsavedDot" aria-label="Neuložené změny">•</span></button>
+    </nav>
+    <div class="status hidden connection-notice" id="connectionNotice" role="status"></div>
 
-    <div class="admin-grid">
-      <aside class="panel sticky">
-        <div class="eyebrow">QR PRO HOSTY</div>
-        <h2>Přidat skladbu</h2>
-        <img class="qr" id="qr" src="/api/admin/qr.svg" alt="QR kód pro připojení hosta">
-        <div class="url-box" id="joinUrl"></div>
-        <div class="controls">
-          <button class="btn secondary compact" id="copyButton" type="button">Kopírovat odkaz</button>
-          <a class="btn secondary compact" href="/tv" target="_blank">Otevřít TV</a>
+    <section id="musicPanel" role="tabpanel" aria-labelledby="musicTab">
+      <article class="panel player-panel" aria-label="Přehrávač">
+        <div class="player-heading">
+          <span class="eyebrow" id="playbackLabel">PŘEHRÁVAČ</span>
+          <button class="btn secondary night-toggle" id="nightButton" type="button" aria-pressed="false" disabled>Noční limit</button>
         </div>
-        <p class="small muted" id="searchProvider"></p>
-        <div class="admin-search">
-          <div class="eyebrow">RYCHLÉ PŘIDÁNÍ OBSLUHOU</div>
-          <form class="search-row" id="adminSearchForm">
-            <input id="adminSearchInput" autocomplete="off" enterkeyhint="search" maxlength="100" placeholder="Interpret nebo skladba" required>
-            <button class="btn compact" id="adminSearchButton" type="submit">Hledat</button>
-          </form>
-          <div class="status" id="adminSearchStatus" role="status"></div>
-          <div class="results admin-search-results" id="adminSearchResults"></div>
+        <h1 id="nowTitle">Načítám…</h1>
+        <p class="muted" id="nowArtist">Zjišťuji aktuální skladbu.</p>
+        <div class="playback-actions">
+          <button class="btn play-toggle" id="playToggle" type="button" disabled>▶ Spustit</button>
+          <button class="btn secondary" id="nextButton" type="button" disabled>Další ›</button>
         </div>
-        <div class="network-card">
-          <div class="eyebrow">SÍŤ BARU</div>
-          <strong id="networkTitle">Přístup není omezený</strong>
-          <p class="small muted" id="networkCopy">Hosté mohou jukebox otevřít z jakékoliv sítě.</p>
-          <div class="controls">
-            <button class="btn secondary compact" id="captureNetworkButton" type="button">Nastavit tuto Wi‑Fi</button>
-            <button class="btn danger compact hidden" id="disableNetworkButton" type="button">Vypnout omezení</button>
+        <div class="control-row volume-row">
+          <label for="volume">Hlasitost</label>
+          <input id="volume" type="range" min="0" max="100" value="80" disabled>
+          <output id="volumeValue" for="volume">80 %</output>
+        </div>
+        <div class="status" id="adminStatus" role="status" aria-live="polite"></div>
+      </article>
+
+      <div class="music-grid">
+        <section class="queue-section" aria-labelledby="queueHeading">
+          <div class="section-head">
+            <h2 id="queueHeading">Další na řadě</h2>
+            <span class="muted small" id="queueCount">Načítám…</span>
           </div>
-          <div class="status" id="networkStatus" role="status"></div>
-        </div>
-        <div class="warning hidden" id="secretsWarning">Před ostrým provozem změň výchozí PIN a tajný klíč v nastavení hostingu.</div>
-      </aside>
-
-      <section>
-        <article class="panel settings-panel">
-          <div class="settings-head">
-            <div>
-              <div class="eyebrow">PODNIK A TV</div>
-              <h2>Vzhled provozovny</h2>
+          <div id="queue"></div>
+        </section>
+        <div class="music-tools">
+          <article class="panel search-panel" aria-labelledby="searchHeading">
+            <h2 id="searchHeading">Přidat skladbu</h2>
+            <form class="search-row" id="adminSearchForm">
+              <label class="sr-only" for="adminSearchInput">Skladba, interpret nebo YouTube odkaz</label>
+              <input id="adminSearchInput" type="search" autocomplete="off" enterkeyhint="search" minlength="2" maxlength="500" placeholder="Skladba, interpret nebo odkaz" required>
+              <button class="btn" id="adminSearchButton" type="submit">Hledat</button>
+            </form>
+            <div class="search-feedback">
+              <div class="status" id="adminSearchStatus" role="status"></div>
+              <button class="text-button hidden" id="clearSearchButton" type="button">Zavřít výsledky ×</button>
             </div>
-            <span class="plan-badge" id="venuePlan">PILOT</span>
-          </div>
-          <form id="displayForm">
+            <div class="results admin-search-results" id="adminSearchResults"></div>
+          </article>
+          <article class="panel automatic-panel" aria-labelledby="autodjHeading">
+            <div class="automatic-heading">
+              <div><h2 id="autodjHeading">Automat</h2><p class="small muted" id="autodjSummary">Při prázdné frontě naváže hudbou.</p></div>
+              <label class="toggle-switch" aria-label="Zapnout automat">
+                <input id="autodjEnabled" type="checkbox" role="switch" checked disabled>
+                <span aria-hidden="true"></span>
+              </label>
+            </div>
+            <div id="autodjControls">
+              <p class="small muted genre-label">Co smí automat hrát</p>
+              <div class="genre-picker">
+                <label><input type="checkbox" name="autodjPlaylist" value="world_hits" checked><span>Světové hity</span></label>
+                <label><input type="checkbox" name="autodjPlaylist" value="funk" checked><span>Funk</span></label>
+                <label><input type="checkbox" name="autodjPlaylist" value="hiphop" checked><span>Hip hop</span></label>
+                <label><input type="checkbox" name="autodjPlaylist" value="house" checked><span>House / Techno</span></label>
+                <label><input type="checkbox" name="autodjPlaylist" value="soul_blues"><span>Soul / Blues</span></label>
+                <label><input type="checkbox" name="autodjPlaylist" value="karaoke"><span>Karaoke</span></label>
+              </div>
+            </div>
+            <div class="status" id="autodjStatus" role="status">Změna se ukládá hned. Hosté mají přednost.</div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="hidden" id="settingsPanel" role="tabpanel" aria-labelledby="settingsTab">
+      <div class="settings-layout">
+        <form class="panel settings-panel" id="displayForm">
+          <div class="settings-head"><h2>Nastavení jukeboxu</h2><span class="plan-badge" id="venuePlan">PILOT</span></div>
+          <fieldset id="venueFields">
+          <details class="settings-group" open>
+            <summary>TV a podnik</summary>
             <label class="field-label" for="businessName">Název podniku</label>
-            <input id="businessName" maxlength="80" placeholder="Např. Ztracený bar" required>
-
-            <div class="field-label">Co poběží na TV</div>
+            <input id="businessName" minlength="2" maxlength="80" placeholder="Ztracený bar" required>
+            <div class="field-label">Obraz na TV</div>
             <div class="mode-picker">
-              <label class="mode-option">
-                <input type="radio" name="tvMode" value="clip" checked>
-                <span><strong>Videoklip</strong><small>Video přes celou TV</small></span>
-              </label>
-              <label class="mode-option">
-                <input type="radio" name="tvMode" value="dj">
-                <span><strong>Virtuální DJ</strong><small>Animovaná scéna + klip</small></span>
-              </label>
-              <label class="mode-option">
-                <input type="radio" name="tvMode" value="menu">
-                <span><strong>Nápojová nabídka</strong><small>Menu podniku + klip</small></span>
-              </label>
+              <label class="mode-option"><input type="radio" name="tvMode" value="clip" checked><span><strong>Videoklip</strong><small>Video přes celou TV</small></span></label>
+              <label class="mode-option"><input type="radio" name="tvMode" value="dj"><span><strong>Virtuální DJ</strong><small>Animovaná scéna a klip</small></span></label>
+              <label class="mode-option"><input type="radio" name="tvMode" value="menu"><span><strong>Nápojový lístek</strong><small>Nabídka podniku a klip</small></span></label>
             </div>
-
-            <div class="field-label">Přechod mezi skladbami</div>
+            <label class="field-label" for="menuText">Nápojový lístek</label>
+            <textarea id="menuText" rows="5" maxlength="4000" placeholder="Každou položku na nový řádek:&#10;Radegast 10 | 45 Kč&#10;Gin &amp; tonic | 115 Kč&#10;&#10;Řádek bez ceny vytvoří nadpis."></textarea>
+          </details>
+          <details class="settings-group">
+            <summary>Přechody a vlastní hudba</summary>
+            <div class="field-label">Mezi skladbami</div>
             <div class="mode-picker audio-picker">
-              <label class="mode-option">
-                <input type="radio" name="transitionMode" value="scratch" checked>
-                <span><strong>Živý DJ mix</strong><small>Skladbu ukončí před tichem a střídá 5 různých přechodů</small></span>
-              </label>
-              <label class="mode-option">
-                <input type="radio" name="transitionMode" value="none">
-                <span><strong>Bez přechodu</strong><small>Další klip se spustí rovnou</small></span>
-              </label>
+              <label class="mode-option"><input type="radio" name="transitionMode" value="scratch" checked><span><strong>DJ přechody</strong><small>Střídá pět přechodů</small></span></label>
+              <label class="mode-option"><input type="radio" name="transitionMode" value="none"><span><strong>Bez efektu</strong><small>Rovnou další skladba</small></span></label>
             </div>
-            <div class="transition-control" id="transitionControls">
-              <label>Hlasitost přechodu <strong id="transitionVolumeValue">55 %</strong><input id="transitionVolume" type="range" min="0" max="100" value="55"></label>
-            </div>
-
-            <div class="field-label">AutoDJ zásobník</div>
-            <div class="autodj-panel">
-              <label class="switch-line"><input id="autodjEnabled" type="checkbox" checked><span><strong>Pokračovat v playlistu poslední skladby</strong><small>Při prázdné frontě naváže stejný playlist. Volby hostů mají přednost.</small></span></label>
-              <div id="autodjControls">
-                <div class="playlist-picker">
-                  <label><input type="checkbox" name="autodjPlaylist" value="world_hits" checked><span>Celosvětové hity<small>Bruno Mars, Dua Lipa, The Weeknd…</small></span></label>
-                  <label><input type="checkbox" name="autodjPlaylist" value="funk" checked><span>Funk<small>James Brown, Chic, Jamiroquai…</small></span></label>
-                  <label><input type="checkbox" name="autodjPlaylist" value="hiphop" checked><span>Hip hop<small>Dr. Dre, Snoop Dogg, Wu-Tang Clan…</small></span></label>
-                  <label><input type="checkbox" name="autodjPlaylist" value="house" checked><span>House / Techno<small>Carl Cox, Green Velvet, Floorplan…</small></span></label>
-                  <label><input type="checkbox" name="autodjPlaylist" value="soul_blues"><span>Retro Soul &amp; Blues<small>Vintage soulové a bluesové verze hitů</small></span></label>
-                  <label><input type="checkbox" name="autodjPlaylist" value="karaoke"><span>Karaoke s originálem<small>Původní zpěv a text přímo ve videu</small></span></label>
-                </div>
-                <label class="field-label" for="autodjCustomQueries">Vlastní playlistová témata</label>
-                <textarea id="autodjCustomQueries" rows="3" maxlength="1000" placeholder="Každé téma na nový řádek, např.:&#10;rock 80. let&#10;slovenské taneční hity"></textarea>
-              </div>
-            </div>
-
-            <label class="field-label" for="menuText">Nápojová nabídka</label>
-            <textarea id="menuText" rows="7" maxlength="4000" placeholder="Každou položku napiš na nový řádek:&#10;Radegast rázná 10 | 45 Kč&#10;Gin &amp; tonic | 115 Kč&#10;&#10;Samostatný řádek bez ceny vytvoří nadpis sekce."></textarea>
-
-            <div class="module-head">
-              <div>
-                <div class="field-label">Zvukový procesor</div>
-                <strong>Night Bass Guard</strong>
-              </div>
-              <span class="processor-state" id="processorState">OVĚŘUJI STAV</span>
-            </div>
-            <p class="small muted module-copy">Vyrovnává hlasitost skladeb, zachytí špičky a dynamicky stáhne jen nadbytečné basy. Skutečné zpracování provádí místní zvukový modul u aparatury.</p>
-            <div class="processor-detail">
-              <span class="small muted" id="processorMetrics">Čekám na aktuální zprávu z PC.</span>
-              <a class="btn secondary compact" href="/static/night-bass-guard-windows.zip" download>Stáhnout Windows modul</a>
-            </div>
-            <details class="install-guide">
-              <summary>První instalace na Windows</summary>
-              <ol>
-                <li>Rozbal stažený ZIP do stálé složky.</li>
-                <li>V Chromu otevři <code>chrome://extensions</code> a zapni Režim pro vývojáře.</li>
-                <li>Zvol Načíst rozbalené a vyber rozbalenou složku.</li>
-                <li>Otevři TV, přihlas ji PINem a klikni na ikonu Night Bass Guard. Stav ochrany ověř v administraci.</li>
-              </ol>
-            </details>
+            <div class="transition-control" id="transitionControls"><label for="transitionVolume">Hlasitost přechodu <strong id="transitionVolumeValue">55 %</strong><input id="transitionVolume" type="range" min="0" max="100" value="55"></label></div>
+            <label class="field-label" for="autodjCustomQueries">Vlastní témata pro automat</label>
+            <textarea id="autodjCustomQueries" rows="3" maxlength="1000" placeholder="Každé téma na nový řádek:&#10;rock 80. let&#10;disco classics"></textarea>
+          </details>
+          <details class="settings-group" id="soundSettings">
+            <summary>Zvuk a ochrana basů <span class="processor-state" id="processorState">OVĚŘUJI STAV</span></summary>
+            <p class="small muted module-copy">Bass Guard vyrovná hlasitost a stáhne přebytečné basy. Potřebuje spuštěný Windows modul na PC s aparaturou.</p>
             <div class="mode-picker audio-picker">
-              <label class="mode-option">
-                <input type="radio" name="audioMode" value="standard" checked>
-                <span><strong>Běžný výstup</strong><small>Hlasitost řídí YouTube</small></span>
-              </label>
-              <label class="mode-option pro-option">
-                <input type="radio" name="audioMode" value="bass_guard">
-                <span><strong>Bass Guard PRO</strong><small>Limiter + dynamická ochrana basů</small></span>
-              </label>
+              <label class="mode-option"><input type="radio" name="audioMode" value="standard" checked><span><strong>Běžný zvuk</strong><small>Hlasitost řídí YouTube</small></span></label>
+              <label class="mode-option"><input type="radio" name="audioMode" value="bass_guard"><span><strong>Bass Guard</strong><small>Vyrovnání, basy a limiter</small></span></label>
             </div>
             <div class="audio-controls" id="audioControls">
-              <label>Cílová hlasitost <strong id="targetLufsValue">−16 LUFS</strong><input id="targetLufs" type="range" min="-24" max="-8" value="-16"></label>
-              <label>Ochrana basů <strong id="bassStrengthValue">65 %</strong><input id="bassStrength" type="range" min="0" max="100" value="65"></label>
-              <label>Limit špiček <strong id="limiterValue">−1.0 dB</strong><input id="limiterCeiling" type="range" min="-6" max="0" step="0.5" value="-1"></label>
+              <label for="targetLufs">Cílová hlasitost <strong id="targetLufsValue">−16 LUFS</strong><input id="targetLufs" type="range" min="-24" max="-8" value="-16"></label>
+              <label for="bassStrength">Ochrana basů <strong id="bassStrengthValue">65 %</strong><input id="bassStrength" type="range" min="0" max="100" value="65"></label>
+              <label for="limiterCeiling">Limit špiček <strong id="limiterValue">−1.0 dB</strong><input id="limiterCeiling" type="range" min="-6" max="0" step="0.5" value="-1"></label>
             </div>
-            <div class="settings-actions">
-              <button class="btn" id="saveAudioButton" type="button">Použít zvuk na PC</button>
-            </div>
+            <button class="btn secondary audio-save" id="saveAudioButton" type="button">Použít zvuk na PC</button>
             <div class="status" id="audioSaveStatus" role="status" aria-live="polite"></div>
-            <details class="small">
-              <summary>Mobil nevidí běžící ochranu?</summary>
-              <p>Na barovém PC otevři administraci na stejné adrese jako v telefonu a přihlas se PINem. TV musí běžet ve stejném profilu Chromu. Do 10 sekund se má objevit stav spojení.</p>
-              <p>Pro potvrzení nastavení potřebuješ Windows modul 0.3.1. Stáhni jej na PC, nahraď soubory rozšíření a v chrome://extensions klikni na Obnovit. Potom na TV kartě jednou zapni Bass Guard. Aktualizaci dělej při pauze hudby.</p>
+            <details class="install-guide">
+              <summary>Připojení PC a první instalace</summary>
+              <p class="small muted" id="processorMetrics">Čekám na zprávu z PC.</p>
+              <a class="btn secondary" href="/static/night-bass-guard-windows.zip" download>Stáhnout Windows modul</a>
+              <ol>
+                <li>Rozbal ZIP do stálé složky.</li>
+                <li>V Chromu otevři <code>chrome://extensions</code> a zapni Režim pro vývojáře.</li>
+                <li>Zvol Načíst rozbalené a vyber složku modulu.</li>
+                <li>Na PC otevři administraci na stejné adrese jako v telefonu a přihlas se PINem. TV musí být ve stejném profilu Chromu.</li>
+                <li>Otevři TV a klikni na ikonu Night Bass Guard. Stav se objeví do 10 sekund.</li>
+              </ol>
+              <p class="small muted">Potvrzení nastavení vyžaduje modul 0.3.1. Při aktualizaci nahraď jeho soubory, klikni na Obnovit a znovu zapni zachytávání na TV. Aktualizuj při pauze hudby.</p>
             </details>
-            <div class="settings-actions">
-              <p class="small muted">Zvuk ovládáš i z iPhonu nebo Androidu. První spuštění zachytávání zvuku vyžaduje kliknutí na ikonu rozšíření na PC.</p>
-              <button class="btn" type="submit">Uložit a přepnout TV</button>
-            </div>
-            <div class="status" id="displayStatus" role="status"></div>
-          </form>
-        </article>
-
-        <article class="panel">
-          <div class="eyebrow">PŘEHRÁVAČ</div>
-          <h2 id="nowTitle">Nic nehraje</h2>
-          <p class="muted" id="nowArtist">TV čeká na první skladbu.</p>
-          <div class="controls">
-            <button class="btn" id="startButton" type="button">▶ Spustit</button>
-            <button class="btn secondary" id="pauseButton" type="button">Pauza</button>
-            <button class="btn secondary" id="resumeButton" type="button">Pokračovat</button>
-            <button class="btn secondary" id="nextButton" type="button">Další ›</button>
+          </details>
+          </fieldset>
+          <div class="save-bar">
+            <div class="status" id="displayStatus" role="status">TV a zvuk potvrď tlačítkem Uložit.</div>
+            <button class="btn" id="saveSettingsButton" type="submit">Uložit nastavení</button>
           </div>
-          <div class="control-row">
-            <span class="small">Hlasitost</span>
-            <input id="volume" type="range" min="0" max="100" value="80">
-            <strong id="volumeValue">80 %</strong>
-          </div>
-          <div class="controls">
-            <button class="btn secondary compact" id="nightButton" type="button">Noční limit vypnutý</button>
-          </div>
-          <p class="small muted">Noční limit jen sníží maximální hlasitost. Bass Guard PRO bude po připojení místního procesoru hlasitost i basy řídit dynamicky.</p>
-          <div class="status" id="adminStatus" role="status"></div>
-        </article>
-
-        <div class="section-head">
-          <div>
-            <div class="eyebrow">ŘÍZENÍ POŘADÍ</div>
-            <h2>Fronta</h2>
-          </div>
-          <span class="muted small" id="queueCount">0 skladeb</span>
-        </div>
-        <div id="queue"></div>
-      </section>
-    </div>
+        </form>
+        <aside class="settings-side">
+          <article class="panel guest-access">
+            <h2>Hosté a QR</h2>
+            <img class="qr" id="qr" src="/api/admin/qr.svg" alt="QR kód pro přidávání skladeb hosty" loading="lazy">
+            <div class="url-box" id="joinUrl"></div>
+            <button class="btn secondary" id="copyButton" type="button">Kopírovat odkaz pro hosty</button>
+            <div class="status" id="copyStatus" role="status"></div>
+            <details class="settings-group network-settings">
+              <summary>Omezení na barovou Wi‑Fi</summary>
+              <strong id="networkTitle">Přístup není omezený</strong>
+              <p class="small muted" id="networkCopy">Hosté mohou přijít z jakékoliv sítě.</p>
+              <div class="controls">
+                <button class="btn secondary" id="captureNetworkButton" type="button">Nastavit tuto Wi‑Fi</button>
+                <button class="btn danger hidden" id="disableNetworkButton" type="button">Vypnout omezení</button>
+              </div>
+              <div class="status" id="networkStatus" role="status"></div>
+            </details>
+          </article>
+          <article class="panel application-settings">
+            <h2>Aplikace</h2>
+            <button class="btn secondary hidden" type="button" data-install-app>Přidat admina na plochu</button>
+            <p class="small muted hidden" data-install-note></p>
+            <p class="small muted" id="searchProvider"></p>
+            <div class="warning hidden" id="secretsWarning">Změň výchozí PIN a tajný klíč v nastavení hostingu.</div>
+            <button class="btn secondary" id="logoutButton" type="button">Odhlásit obsluhu</button>
+          </article>
+        </aside>
+      </div>
+    </section>
   </main>
   <script src="/static/install.js" defer></script>
   <script src="/static/admin.js" defer></script>
