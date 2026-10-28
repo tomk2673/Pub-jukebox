@@ -1,5 +1,12 @@
 # PUB Jukebox 1.10.3
 
+## Oddělené prodejní demo QR lístku
+
+Spuštění: `python -m uvicorn demo_server:app --port 8000`. Demo obsahuje fiktivní
+ceny a partnera; nemá databázi, měření, ovládání hudby ani zápisy kampaní.
+Menu `/menu`, nabídka `/demo`, vstup z `/guest`, ukázka správy `/admin/ads`.
+Podrobnosti: [spuštění a izolace](docs/sales-demo.md), [návrh placeného pilotu](docs/sales-pilot.md).
+
 ## Jednodušší administrace — 11. října 2026
 
 Admin začíná přehrávačem. Jedno tlačítko střídá spuštění, pauzu a pokračování;
@@ -69,6 +76,16 @@ nesmí přepsat novější výběr. Volby hostů mají stále vyšší prioritu.
 Před nasazením aplikovat migrace `continue_last_playlist` a `replace_invalid_autodj_buffer`. První je aditivní: přidá metadata
 a nové RPC, zachová původní frontu i původní databázové funkce. Testy PostgreSQL používají
 skutečné původní funkce v lokálním PGlite, nikdy produkční hudební frontu.
+
+## Reklamní modul — 4. října 2026
+
+Samostatný nápojový lístek `/menu` a správa sponzorských kampaní `/admin/ads`.
+Návrhy jsou vypnuté, lze je zkontrolovat, spustit na období a jedním tlačítkem
+vypnout. Statistiky měří zobrazení a prokliky, ne příjem. Reklama nezasahuje
+do hudby. Google reklamy a odměny zatím nejsou aktivní.
+
+Před nasazením na Supabase je nutná migrace `20261003235000_add_sponsor_campaigns.sql`.
+[Model monetizace, provoz, omezení a podmínky spuštění](docs/advertising.md).
 
 ## Přeskočení vlastní skladby — 3. října 2026
 

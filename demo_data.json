@@ -1,0 +1,13 @@
+{
+  "business_name": "BAR NA ROHU · DEMO",
+  "menu_text": "Čepované\nSvětlý ležák · 0,5 l | 59 Kč\nSvětlý ležák · 0,3 l | 39 Kč\nNealkoholické pivo · 0,5 l | 49 Kč\nMíchané drinky\nGin & tonic · 0,25 l | 129 Kč\nCuba libre · 0,25 l | 119 Kč\nAperitivo spritz · 0,25 l | 139 Kč\nVirgin mojito · 0,3 l | 89 Kč\nNealko\nDomácí citronáda · 0,4 l | 69 Kč\nZázvorová limonáda · 0,4 l | 69 Kč\nCola · 0,33 l | 49 Kč\nPerlivá voda · 0,33 l | 39 Kč\nKáva a čaj\nEspresso · 30 ml | 49 Kč\nCappuccino · 150 ml | 65 Kč\nČaj · 0,3 l | 49 Kč",
+  "campaign": {
+    "sponsor": "PRAŽÍRNA ZA ROHEM · FIKTIVNÍ",
+    "headline": "Dobré ráno začíná kávou.",
+    "body": "Tady může být nabídka místního partnera. Tato pražírna i reklama jsou fiktivní. Žádná sleva ani prodej neprobíhá.",
+    "cta": "Prohlédnout ukázku",
+    "target_url": "https://example.invalid/demo",
+    "starts_at": 1793142000,
+    "ends_at": 1795734000
+  }
+}

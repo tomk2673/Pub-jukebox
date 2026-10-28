@@ -18,6 +18,10 @@
 
 * { box-sizing: border-box; }
 
+.menu-entry { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 0 0 20px; }
+.menu-entry a { display: inline-flex; align-items: center; min-height: 44px; text-decoration: none; }
+.advertising-nav { margin: 12px 0; }
+
 html {
   width: 100%;
   min-height: 100%;
@@ -223,6 +227,7 @@ textarea:focus { border-color: var(--amber); box-shadow: 0 0 0 4px rgba(255, 186
 .btn.danger { color: #fff; border-color: rgba(255, 92, 104, 0.22); background: rgba(255, 92, 104, 0.15); box-shadow: none; }
 .btn.cyan { background: var(--cyan); box-shadow: none; }
 .btn.compact { min-height: 38px; padding: 0 13px; font-size: 13px; }
+.advertising-nav { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
 .icon-btn { min-width: 50px; font-size: 19px; }
 
 .results { display: grid; gap: 10px; margin-top: 16px; }

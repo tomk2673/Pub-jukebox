@@ -1,0 +1,27 @@
+.offer-shell { max-width: 1100px; }
+.offer-shell .topbar { flex-wrap: wrap; gap: 16px; }
+.offer-shell a.btn, .partner-shell a.btn { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; text-decoration: none; }
+.offer-hero { display: grid; grid-template-columns: minmax(0,1fr) 280px; gap: 48px; align-items: center; padding: 42px 0 55px; }
+.offer-hero h1, .partner-shell h1 { font-size: clamp(44px,7vw,80px); line-height: 1.05; letter-spacing: -.04em; margin: 18px 0 24px; }
+.offer-lead { font-size: 19px; line-height: 1.7; max-width: 650px; color: #c9d0d8; }
+.offer-actions { display: flex; gap: 12px; flex-wrap: wrap; margin: 26px 0; }
+.qr-card { display: grid; justify-items: center; text-align: center; border: 1px solid var(--line); border-radius: 24px; padding: 24px; background: #171b22; }
+.qr-card img { display: block; max-width: 100%; height: auto; background: white; border-radius: 10px; margin-bottom: 20px; }
+.qr-card a { display: inline-flex; align-items: center; min-height: 44px; font-size: 13px; }
+.offer-section { border-top: 1px solid var(--line); padding: 42px 0; }
+.offer-section h2, .menu-footer h2 { font-size: clamp(26px,4vw,38px); line-height: 1.2; max-width: 800px; }
+.offer-section p, .menu-footer p, .partner-shell p { line-height: 1.75; }
+.benefit-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 30px; padding-top: 20px; }
+.benefit-grid p { color: #aab3bf; font-size: 15px; }
+.step { color: var(--amber); font-size: 13px; font-weight: 800; }
+.price-grid, .metric-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 22px; margin: 26px 0; }
+.price-card { border-color: #323844; }
+.price-card.featured { border-color: #92743f; background: linear-gradient(135deg,#302719,#171b22 80%); }
+.price-card h3 { font-size: 24px; }
+.offer-price { font-weight: 800; font-size: 36px; margin: 26px 0 16px; color: var(--amber); }
+.offer-price span { display: block; font-size: 13px; font-weight: 400; color: var(--muted); }
+.workflow { padding-left: 22px; max-width: 750px; line-height: 1.8; }
+.workflow li { padding: 8px 0 8px 8px; }
+.partner-shell { max-width: 850px; padding-top: 60px; }
+.demo-top { margin: 18px auto 0; width: min(1064px,calc(100% - 36px)); }
+@media(max-width:720px) { .offer-hero { grid-template-columns: 1fr; gap: 24px; padding-top: 15px; } .qr-card { max-width: 320px; width: 100%; } .benefit-grid,.price-grid,.metric-grid { grid-template-columns: 1fr; } .offer-section { padding: 30px 0; } .offer-shell .brand-name { font-size: 15px; } .partner-shell { padding-top: 32px; } }
