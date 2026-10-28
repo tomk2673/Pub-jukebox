@@ -11,6 +11,9 @@ nastavit sdílení; QR v ukázce směřuje na tento web se stejným omezením p�
 Adresa obsahuje menu, nabídku pilotu, vstup z hostovského rozhraní, místní cíl
 fiktivní reklamy a správu pouze pro čtení. Žádný skutečný partner není aktivní.
 
+[Vizuální náhled menu a karty](sales-demo-preview.jpg) zachycuje stejný statický
+export v izolovaném kontrolním prostředí.
+
 ## Automatizované testy
 
 - **76 Python testů prošlo**, včetně celého původního testovacího souboru,
