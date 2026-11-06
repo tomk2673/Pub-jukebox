@@ -455,7 +455,7 @@ def test_guest_mobile_layout_blocks_horizontal_overscroll(tmp_path, monkeypatch)
         assert "overscroll-behavior-x: none" in style.text
         assert "touch-action: pan-y pinch-zoom" in style.text
         assert ".guest-app .results .song-card > .btn" in style.text
-        assert 'pub-jukebox-v14' in worker.text
+        assert 'pub-jukebox-v15' in worker.text
 
 
 def test_all_surfaces_install_fullscreen_on_phone_and_computer(tmp_path, monkeypatch):
@@ -491,7 +491,7 @@ def test_all_surfaces_install_fullscreen_on_phone_and_computer(tmp_path, monkeyp
         assert worker.status_code == 200
         assert worker.headers["service-worker-allowed"] == "/"
         assert "no-cache" in worker.headers["cache-control"]
-        assert 'pub-jukebox-v14' in worker.text
+        assert 'pub-jukebox-v15' in worker.text
         assert "/static/admin.webmanifest" in worker.text
         assert "/static/tv.webmanifest" in worker.text
         assert 'register("/sw.js", { scope: "/" })' in installer.text

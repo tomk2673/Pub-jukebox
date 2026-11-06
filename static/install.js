@@ -12,7 +12,8 @@
 
   function showNote(message = "") {
     for (const note of notes) {
-      note.textContent = message;
+      if (window.JukeboxI18n) window.JukeboxI18n.bind(note, message);
+      else note.textContent = message;
       note.classList.toggle("hidden", !message);
     }
   }

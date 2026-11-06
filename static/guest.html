@@ -9,7 +9,7 @@
   <meta name="apple-mobile-web-app-title" content="Jukebox">
   <link rel="manifest" href="/static/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/static/icon-180.png">
-  <link rel="stylesheet" href="/static/common.css">
+  <link rel="stylesheet" href="/static/common.css?v=15">
   <title>PUB Jukebox</title>
 </head>
 <body class="guest-app">
@@ -18,85 +18,92 @@
       <div class="brand">
         <div class="brand-mark">▶</div>
         <div>
-          <div class="eyebrow">LIVE V BARU</div>
+          <div class="eyebrow" data-i18n>LIVE V BARU</div>
           <div class="brand-name" id="brandName">PUB JUKEBOX</div>
         </div>
       </div>
-      <span class="small muted" id="connection">připojuji…</span>
+      <div class="topbar-actions">
+        <div class="language-switch" role="group" aria-label="Jazyk" data-i18n-aria-label="Jazyk">
+          <button type="button" data-language="cs" lang="cs" aria-label="Čeština" aria-pressed="true">CZ</button>
+          <button type="button" data-language="en" lang="en" aria-label="English" aria-pressed="false">EN</button>
+        </div>
+        <span class="small muted" id="connection" data-i18n>připojuji…</span>
+      </div>
     </header>
 
     <section class="panel search-panel">
-      <div class="eyebrow">VYBER DALŠÍ TRACK</div>
-      <h2>Najdi skladbu na YouTube</h2>
-      <div class="search-kind" role="radiogroup" aria-label="Typ vystoupení">
-        <label><input type="radio" name="searchMode" value="music" checked><span>♫ Hudba</span></label>
-        <label><input type="radio" name="searchMode" value="karaoke"><span>🎤 Karaoke + originál</span></label>
+      <div class="eyebrow" data-i18n>VYBER DALŠÍ TRACK</div>
+      <h2 data-i18n>Najdi skladbu na YouTube</h2>
+      <div class="search-kind" role="radiogroup" aria-label="Typ vystoupení" data-i18n-aria-label="Typ vystoupení">
+        <label><input type="radio" name="searchMode" value="music" checked><span data-i18n>♫ Hudba</span></label>
+        <label><input type="radio" name="searchMode" value="karaoke"><span data-i18n>🎤 Karaoke + originál</span></label>
       </div>
-      <p class="karaoke-note">Karaoke hledá původní zpěv s textem přímo ve videu.</p>
+      <p class="karaoke-note" data-i18n>Karaoke hledá původní zpěv s textem přímo ve videu.</p>
       <form class="search-row" id="searchForm">
-        <input id="searchInput" autocomplete="off" enterkeyhint="search" maxlength="100" placeholder="Interpret nebo název skladby" required>
-        <button class="btn" type="submit" id="searchButton">Hledat</button>
+        <input id="searchInput" autocomplete="off" enterkeyhint="search" maxlength="100" placeholder="Interpret nebo název skladby" data-i18n-placeholder="Interpret nebo název skladby" required>
+        <button class="btn" type="submit" id="searchButton" data-i18n>Hledat</button>
       </form>
       <div class="status" id="searchStatus" role="status"></div>
       <div class="results" id="results"></div>
     </section>
 
     <div class="pwa-install hidden" data-install-panel>
-      <button class="btn secondary compact" type="button" data-install-app>Nainstalovat aplikaci bez lišty</button>
+      <button class="btn secondary compact" type="button" data-install-app data-i18n>Nainstalovat aplikaci bez lišty</button>
       <p class="small muted hidden" data-install-note></p>
     </div>
 
     <section class="hero">
       <article class="panel now-panel" id="nowPanel">
         <div class="now-content">
-          <span class="eyebrow">PRÁVĚ HRAJE</span>
-          <h1 class="now-title" id="nowTitle">Hudba čeká na první volbu</h1>
-          <div class="now-artist" id="nowArtist">Najdi skladbu a pošli ji do fronty.</div>
+          <span class="eyebrow" data-i18n>PRÁVĚ HRAJE</span>
+          <h1 class="now-title" id="nowTitle" data-i18n>Hudba čeká na první volbu</h1>
+          <div class="now-artist" id="nowArtist" data-i18n>Najdi skladbu a pošli ji do fronty.</div>
           <div class="now-actions hidden" id="ownSongActions">
-            <button class="btn secondary" type="button" id="skipOwnSong">Přeskočit moji skladbu</button>
-            <p class="small muted">Spletl/a ses? Pustí se další skladba z fronty.</p>
+            <button class="btn secondary" type="button" id="skipOwnSong" data-i18n>Přeskočit moji skladbu</button>
+            <p class="small muted" data-i18n>Spletl/a ses? Pustí se další skladba z fronty.</p>
           </div>
           <div class="status" id="nowStatus" role="status" aria-live="polite"></div>
         </div>
       </article>
       <article class="panel stat-panel">
         <div>
-          <div class="eyebrow">SKLADEB PŘED TEBOU</div>
+          <div class="eyebrow" data-i18n>SKLADEB PŘED TEBOU</div>
           <div class="big-number" id="queueCount">0</div>
         </div>
-        <p class="muted small">Každá volba jde rovnou do fronty. Hlasuj pro skladbu, kterou chceš dostat výš; každý telefon má jeden hlas.</p>
+        <p class="muted small" data-i18n>Každá volba jde rovnou do fronty. Hlasuj pro skladbu, kterou chceš dostat výš; každý telefon má jeden hlas.</p>
       </article>
     </section>
 
     <section class="panel discovery-panel">
-      <div class="eyebrow">RYCHLÝ VÝBĚR</div>
-      <h2>Další skladby z playlistu</h2>
-      <p class="small muted" id="continuationNote">Při prázdné frontě automaticky pokračuje playlist poslední skladby.</p>
-      <div class="discovery-tabs" role="tablist" aria-label="Seznamy skladeb">
-        <button class="btn secondary compact active" type="button" data-discovery="continue">↻ Pokračovat v playlistu</button>
-        <button class="btn secondary compact" type="button" data-discovery="popular">★ Oblíbené v baru</button>
+      <div class="eyebrow" data-i18n>RYCHLÝ VÝBĚR</div>
+      <h2 data-i18n>Další skladby z playlistu</h2>
+      <p class="small muted" id="continuationNote" data-i18n>Při prázdné frontě automaticky pokračuje playlist poslední skladby.</p>
+      <div class="discovery-tabs" role="tablist" aria-label="Seznamy skladeb" data-i18n-aria-label="Seznamy skladeb">
+        <button class="btn secondary compact active" type="button" data-discovery="continue" data-i18n>↻ Pokračovat v playlistu</button>
+        <button class="btn secondary compact" type="button" data-discovery="popular" data-i18n>★ Oblíbené v baru</button>
         <button class="btn secondary compact" type="button" data-discovery="soul_blues">Retro Soul &amp; Blues</button>
-        <button class="btn secondary compact" type="button" data-discovery="world_hits">Celosvětové hity</button>
+        <button class="btn secondary compact" type="button" data-discovery="world_hits" data-i18n>Celosvětové hity</button>
         <button class="btn secondary compact" type="button" data-discovery="funk">Funk</button>
         <button class="btn secondary compact" type="button" data-discovery="hiphop">Hip hop</button>
         <button class="btn secondary compact" type="button" data-discovery="house">House / Techno</button>
       </div>
       <div class="status" id="discoverStatus" role="status"></div>
       <div class="results discover-results" id="discoverResults"></div>
-      <button class="btn secondary compact" type="button" id="moreDiscovery">Další nabídka</button>
+      <button class="btn secondary compact" type="button" id="moreDiscovery" data-i18n>Další nabídka</button>
     </section>
 
     <div class="section-head">
       <div>
-        <div class="eyebrow">SPOLEČNÁ VOLBA</div>
-        <h2>Fronta</h2>
+        <div class="eyebrow" data-i18n>SPOLEČNÁ VOLBA</div>
+        <h2 data-i18n>Fronta</h2>
       </div>
-      <button class="btn secondary compact" id="refreshButton" type="button">Obnovit</button>
+      <button class="btn secondary compact" id="refreshButton" type="button" data-i18n>Obnovit</button>
     </div>
     <section id="queue" aria-live="polite"></section>
-    <p class="footer-note">Přehrávání zajišťuje YouTube. Dostupnost některých videí určuje jejich vlastník.</p>
+    <p class="footer-note" data-i18n>Přehrávání zajišťuje YouTube. Dostupnost některých videí určuje jejich vlastník.</p>
   </main>
-  <script src="/static/install.js" defer></script>
-  <script src="/static/guest.js" defer></script>
+  <script src="/static/i18n.js?v=1" defer></script>
+  <script src="/static/install.js?v=15" defer></script>
+  <script src="/static/guest.js?v=15" defer></script>
 </body>
 </html>
