@@ -7,25 +7,30 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <link rel="manifest" href="/static/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/static/icon-180.png">
-  <link rel="stylesheet" href="/static/common.css">
-  <title>Připojit · PUB Jukebox</title>
+  <link rel="stylesheet" href="/static/common.css?v=15">
+  <title data-i18n>Připojit · PUB Jukebox</title>
 </head>
 <body>
   <section class="login-shell">
     <div class="panel login-card">
+      <div class="language-row"><div class="language-switch" role="group" aria-label="Jazyk" data-i18n-aria-label="Jazyk">
+          <button type="button" data-language="cs" lang="cs" aria-label="Čeština" aria-pressed="true">CZ</button>
+          <button type="button" data-language="en" lang="en" aria-label="English" aria-pressed="false">EN</button>
+        </div></div>
       <div class="brand-mark">▶</div>
       <div class="eyebrow">PUB JUKEBOX</div>
-      <h1>Připoj se k hudbě</h1>
-      <p class="muted">Nejrychlejší je naskenovat QR kód na obrazovce v baru. Případně zadej kód ručně.</p>
+      <h1 data-i18n>Připoj se k hudbě</h1>
+      <p class="muted" data-i18n>Nejrychlejší je naskenovat QR kód na obrazovce v baru. Případně zadej kód ručně.</p>
       <form id="joinForm">
-        <input class="join-code" id="code" autocomplete="off" autocapitalize="none" placeholder="Kód podniku" required>
-        <button class="btn" type="submit">Vstoupit</button>
+        <input class="join-code" id="code" autocomplete="off" autocapitalize="none" placeholder="Kód podniku" data-i18n-placeholder="Kód podniku" required>
+        <button class="btn" type="submit" data-i18n>Vstoupit</button>
       </form>
       <div class="status" id="joinStatus"></div>
-      <a class="staff-link" href="/admin">Obsluha</a>
+      <a class="staff-link" href="/admin" data-i18n>Obsluha</a>
     </div>
   </section>
-  <script src="/static/install.js" defer></script>
-  <script src="/static/join.js" defer></script>
+  <script src="/static/i18n.js?v=1" defer></script>
+  <script src="/static/install.js?v=15" defer></script>
+  <script src="/static/join.js?v=15" defer></script>
 </body>
 </html>

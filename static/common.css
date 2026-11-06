@@ -89,6 +89,14 @@ a { color: var(--cyan); }
 }
 
 .brand { display: flex; align-items: center; gap: 12px; }
+.topbar-actions { display: grid; justify-items: end; gap: 6px; flex-shrink: 0; }
+.language-row { display: flex; justify-content: flex-end; margin-bottom: 14px; }
+.language-switch { display: inline-flex; gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 13px; background: rgba(255, 255, 255, .04); }
+.language-switch button { min-width: 44px; min-height: 44px; padding: 0 9px; border: 0; border-radius: 9px; cursor: pointer; color: var(--muted); background: transparent; font-size: 13px; font-weight: 850; }
+.language-switch button[aria-pressed="true"] { color: #111; background: var(--amber); }
+.language-switch button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+body.guest-app .brand { flex: 1; }
+body.guest-app .brand-mark { flex-shrink: 0; }
 
 .brand-mark {
   display: grid;

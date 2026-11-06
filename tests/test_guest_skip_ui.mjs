@@ -1,20 +1,7 @@
-import fs from 'node:fs';
 import vm from 'node:vm';
 import assert from 'node:assert/strict';
-
-function element() {
-  const classes = new Set();
-  return {textContent: '', disabled: false, children: [],
-    classList: {toggle(name, enabled) { enabled ? classes.add(name) : classes.delete(name); }, contains: name => classes.has(name)},
-    style: {setProperty() {}, removeProperty() {}},
-    replaceChildren(...nodes) { this.children = nodes; }, append(...nodes) { this.children.push(...nodes); },
-    setAttribute() {}, addEventListener() {}};
-}
-const elements = new Map();
-const get = id => { if (!elements.has(id)) elements.set(id, element()); return elements.get(id); };
-const context = vm.createContext({document: {getElementById: get, createElement: element}, window: {confirm: () => true}, AbortController, setTimeout, clearTimeout});
-const source = fs.readFileSync(new URL('../static/guest.js', import.meta.url), 'utf8').replace(/\nboot\(\);\s*$/, '');
-vm.runInContext(source, context);
+import { guestContext } from './helpers/guest-ui.mjs';
+const {context, get} = guestContext();
 // Discovery has its own integration test; isolate skip/poll assertions from its refresh.
 vm.runInContext('state.discovery = "popular"', context);
 const own = {id: 1, video_id: 'a', title: 'Own song', status: 'playing', requested_by_me: true};

@@ -1,5 +1,17 @@
 # PUB Jukebox 1.10.3
 
+## Čeština a angličtina pro hosty — 6. listopadu 2026
+
+Na hostovské stránce, vstupu s kódem a upozornění na barovou Wi-Fi je přepínač
+**CZ / EN**. Překládá celé hostovské ovládání, výsledkové počty, playlisty,
+potvrzení, chyby a instalační pokyny. Volba se ukládá na telefonu; bez uložené
+volby se jazyk řídí prohlížečem. Odkaz může obsahovat `lang=en` nebo `lang=cs`.
+Přepnutí neobnovuje stránku, výsledky ani frontu a zachová probíhající operaci.
+Názvy skladeb, interpretů, hostů a podniku se nemění. Administrace a TV si
+ponechávají své stávající rozhraní. Změna nevyžaduje databázovou migraci.
+
+Ověření překladu: `node tests/test_guest_i18n.mjs` a `node tests/test_guest_skip_ui.mjs`.
+
 ## Jednodušší administrace — 11. října 2026
 
 Admin začíná přehrávačem. Jedno tlačítko střídá spuštění, pauzu a pokračování;
