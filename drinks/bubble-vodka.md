@@ -7,13 +7,13 @@ Bubble Vodka je jednoduchý perlivý party drink: vodka se Spritem, podávaná j
 ## Ingredience (1 porce)
 - 4 cl vodky
 - 8 cl Spritu
-- Pevná, nepoškozená sklenice vhodná pro tento způsob servírování
+- Pevná, nepoškozená sklenice a **pivní podtácek (povinný pro přípravu)**
 
 ## Postup
 1. Do sklenice nalij 4 cl vodky.
 2. Přilij 8 cl vychlazeného Spritu.
-3. Sklenici bezpečně přikryj vhodným podtáckem a **jemně klepni dnem o podložku**, aby se nápoj napěnil. Nepoužívej nadměrnou sílu ani tenké sklo.
-4. Odkryj a ihned podávej.
+3. **Sklenici přikryj pivním podtáckem, pevně ho přidrž a jemně bouchni dnem sklenice o podložku**, aby se nápoj napěnil. Nepoužívej nadměrnou sílu ani tenké sklo.
+4. Sundej podtácek a ihned podávej. **Bez podtácku se Bubble Vodka nepřipravuje.**
 
 **Chuť:** sladká, citronovo-limetková, výrazně perlivá.
 
