@@ -443,7 +443,7 @@ async function prepareReservedNextSong(currentSongId, incoming) {
     const queued = await makeSureNextSongExists();
     const next = queued.find((song) => !attempted.has(song.id)) || null;
     if (!next) return null;
-    if (isAutoDjSong(currentSong) && isAutoDjSong(next) && queued.some(song => !isAutoDjSong(song))) return null;
+    if (isAutoDjSong(next) && queued.some(song => !isAutoDjSong(song))) throw new Error("Zákaznická skladba čeká na přehrání.");
     attempted.add(next.id);
     try {
       await startIncomingSong(incoming, next);
