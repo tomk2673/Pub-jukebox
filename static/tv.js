@@ -302,9 +302,14 @@ function setAllDeckVolumes() {
   });
 }
 
+function isAutoDjSong(song) {
+  return Boolean(song && (song.is_autodj === true || song.is_autodj === 1 || song.requester_id === "autodj" || /^AutoDJ(?:\\b|$)/i.test(song.requested_by || "")));
+}
+
 async function queuedSongs() {
   // An unreadable queue is not an empty queue: never substitute AutoDJ on a failed read.
-  return (await api("/api/queue")).filter((song) => song.status === "queued");
+  return (await api("/api/queue")).filter((song) => song.status === "queued")
+    .sort((a, b) => Number(isAutoDjSong(a)) - Number(isAutoDjSong(b)));
 }
 
 async function prepareAutoDj(queueEmpty = false) {
@@ -438,6 +443,7 @@ async function prepareReservedNextSong(currentSongId, incoming) {
     const queued = await makeSureNextSongExists();
     const next = queued.find((song) => !attempted.has(song.id)) || null;
     if (!next) return null;
+    if (isAutoDjSong(currentSong) && isAutoDjSong(next) && queued.some(song => !isAutoDjSong(song))) return null;
     attempted.add(next.id);
     try {
       await startIncomingSong(incoming, next);
@@ -450,6 +456,10 @@ async function prepareReservedNextSong(currentSongId, incoming) {
       continue;
     }
     try {
+      if (isAutoDjSong(next) && (await queuedSongs()).some(song => !isAutoDjSong(song))) {
+        resetDeck(incoming);
+        continue;
+      }
       await reserveTransition(currentSongId, next.id);
       return next;
     } catch (error) {
@@ -731,6 +741,13 @@ function applyDisplay(display) {
 async function ensureAutoDjBuffer(state) {
   if (!playbackEnabled || !authenticated || playbackPaused || transitioning) return;
   if (state.now_playing) {
+    if (isAutoDjSong(state.now_playing)) {
+      const queued = await queuedSongs();
+      if (queued.some(song => !isAutoDjSong(song))) {
+        await finishCurrentSong(false);
+        return;
+      }
+    }
     if (autoDjEnabled) await prepareAutoDj().catch(handlePlaybackError);
     return;
   }
@@ -826,7 +843,7 @@ async function sync(force = false) {
     createPlayers();
     $("loginView").classList.add("hidden");
     await applyState(state, force);
-    ensureAutoDjBuffer(state);
+    ensureAutoDjBuffer(state).catch(handlePlaybackError);
   } catch (error) {
     handlePlaybackError(error);
   } finally {
