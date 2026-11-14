@@ -302,9 +302,14 @@ function setAllDeckVolumes() {
   });
 }
 
+function isAutomaticSong(song) {
+  return song?.requester_id === "autodj" || song?.is_autodj === true || song?.is_autodj === 1;
+}
+
 async function queuedSongs() {
   // An unreadable queue is not an empty queue: never substitute AutoDJ on a failed read.
-  return (await api("/api/queue")).filter((song) => song.status === "queued");
+  return (await api("/api/queue")).filter((song) => song.status === "queued")
+    .sort((a, b) => Number(isAutomaticSong(a)) - Number(isAutomaticSong(b)));
 }
 
 async function prepareAutoDj(queueEmpty = false) {
@@ -826,6 +831,15 @@ async function sync(force = false) {
     createPlayers();
     $("loginView").classList.add("hidden");
     await applyState(state, force);
+    if (playbackEnabled && !playbackPaused && !transitioning && isAutomaticSong(currentSong) && currentVideo) {
+      const currentId = currentSong.id;
+      const queued = await queuedSongs();
+      if (!transitioning && currentSong?.id === currentId && queued.some(song => !isAutomaticSong(song))) {
+        // Do not await: finishCurrentSong performs its own sync after the transition.
+        void finishCurrentSong(false);
+        return;
+      }
+    }
     ensureAutoDjBuffer(state);
   } catch (error) {
     handlePlaybackError(error);
