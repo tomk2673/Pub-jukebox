@@ -76,15 +76,29 @@ assert.equal(restricted.i18n.language, 'en', 'blocked storage does not break lan
 restricted.i18n.setLanguage('de');
 assert.equal(restricted.i18n.language, 'en');
 
+i18n.setLanguage('uk');
+assert.equal(document.documentElement.lang, 'uk');
+assert.equal(storage.get('jukebox_language'), 'uk');
+assert.equal(i18n.t('Hledat'), 'Шукати');
+assert.equal(i18n.t('Tahle skladba už ve frontě je (#{id}).', {id: 42}), 'Ця пісня вже в черзі (#42).');
+assert.equal(resultCard.children[1].children[0].textContent, 'Hledat');
+assert.equal(guestContext({language: 'uk-UA'}).i18n.language, 'uk');
+assert.equal(guestContext({language: 'uk-UA', saved: 'cs'}).i18n.language, 'cs');
+assert.equal(guestContext({saved: 'cs', search: '?code=venue-code&lang=uk'}).i18n.language, 'uk');
+i18n.setLanguage('en');
 // Every static label marked for translation must have an English entry.
 for (const name of ['guest', 'join', 'network']) {
   const html = fs.readFileSync(new URL(`../static/${name}.html`, import.meta.url), 'utf8');
   assert.match(html, /data-language="cs"/);
   assert.match(html, /data-language="en"/);
+  assert.match(html, /data-language="uk"/);
   assert.ok(html.indexOf('/static/i18n.js') < html.indexOf('/static/install.js') || name === 'network');
   for (const match of html.matchAll(/data-i18n>([^<]+)</g)) {
     const original = match[1].replaceAll('&amp;', '&');
     assert.notEqual(i18n.t(original), original, `${name}: English translation for ${original}`);
+    i18n.setLanguage("uk");
+    assert.notEqual(i18n.t(original), original, `${name}: Ukrainian translation for ${original}`);
+    i18n.setLanguage("en");
   }
 }
 console.log('Guest translations: language persistence, live actions, search results, errors, confirmations, safe names and all guest pages verified.');
